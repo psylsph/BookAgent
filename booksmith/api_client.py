@@ -1,7 +1,7 @@
 import os
 import time
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Any, Generator, Optional, cast
 
 import anthropic
 from dotenv import load_dotenv
@@ -13,6 +13,24 @@ load_dotenv(_env_path)
 # API Configuration
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_TIMEOUT = int(os.getenv("ANTHROPIC_TIMEOUT", "120"))
+
+# Default writing settings
+DEFAULT_MIN_WORDS = int(os.getenv("DEFAULT_MIN_WORDS", "2000"))
+
+# Temperature settings
+DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
+
+# Stage-specific temperature overrides (optional)
+TEMPERATURE_MAP = {
+    "story_bible": float(os.getenv("TEMP_STORY_BIBLE", "0.7")),
+    "world_builder": float(os.getenv("TEMP_WORLD_BUILDER", "0.7")),
+    "characters": float(os.getenv("TEMP_CHARACTERS", "0.7")),
+    "chapter_outliner": float(os.getenv("TEMP_CHAPTER_OUTLINER", "0.7")),
+    "chapter_writer": float(os.getenv("TEMP_CHAPTER_WRITER", "0.8")),
+    "reviewer": float(os.getenv("TEMP_REVIEWER", "0.5")),
+    "outline_reviewer": float(os.getenv("TEMP_OUTLINE_REVIEWER", "0.5")),
+    "macro_summary": float(os.getenv("TEMP_MACRO_SUMMARY", "0.5")),
+}
 
 # Remote config (zenmux or other providers)
 ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "")
@@ -32,8 +50,9 @@ MODEL_PROVIDER_MAP = {
     "world_builder": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
     "characters": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
     "chapter_outliner": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "chapter_writer": ("remote", ANTHROPIC_REMOTE_MODEL, ANTHROPIC_REMOTE_CONTEXT),
+    "chapter_writer": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
     "reviewer": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
+    "outline_reviewer": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
     "macro_summary": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
 }
 
@@ -69,8 +88,8 @@ class APIClient:
         self, stage: str, project_config: Optional[dict] = None
     ) -> str:
         """Get model for a given pipeline stage."""
-        if project_config and "model" in project_config:
-            return project_config["model"]
+        # Prefer stage-specific model from MODEL_PROVIDER_MAP over project config
+        # (project config model is typically used for chapter writing)
         _, model, _ = MODEL_PROVIDER_MAP.get(
             stage, ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT)
         )
@@ -90,6 +109,10 @@ class APIClient:
         )
         return provider
 
+    def get_temperature_for_stage(self, stage: str) -> float:
+        """Get temperature for a given pipeline stage."""
+        return TEMPERATURE_MAP.get(stage, DEFAULT_TEMPERATURE)
+
     def stream(
         self,
         stage: str,
@@ -101,6 +124,7 @@ class APIClient:
         provider = self.get_provider_for_stage(stage)
         model = self.get_model_for_stage(stage, project_config)
         context_size = self.get_context_for_stage(stage)
+        temperature = self.get_temperature_for_stage(stage)
         client = self._get_client(provider)
 
         for attempt in range(self.max_retries):
@@ -110,6 +134,7 @@ class APIClient:
                     system=system,
                     messages=[{"role": "user", "content": user_message}],
                     max_tokens=context_size,
+                    temperature=temperature,
                 ) as stream:
                     for text in stream.text_stream:
                         yield text
@@ -128,11 +153,11 @@ class APIClient:
                         messages=[{"role": "user", "content": user_message}],
                         max_tokens=8192,
                     )
-                    for block in response.content:
+                    for block in cast(Any, response.content):
                         if hasattr(block, "text"):
-                            yield block.text
+                            yield cast(Any, block).text
                         elif hasattr(block, "type") and block.type == "text":
-                            yield block.text
+                            yield cast(Any, block).text
                     return
                 except Exception:
                     raise e
@@ -148,6 +173,7 @@ class APIClient:
         provider = self.get_provider_for_stage(stage)
         model = self.get_model_for_stage(stage, project_config)
         context_size = self.get_context_for_stage(stage)
+        temperature = self.get_temperature_for_stage(stage)
         client = self._get_client(provider)
 
         last_error = None
@@ -158,7 +184,9 @@ class APIClient:
                     system=system,
                     messages=[{"role": "user", "content": user_message}],
                     max_tokens=context_size,
+                    temperature=temperature,
                 )
+                # pyright: ignore[attr-defined]
                 for block in response.content:
                     if hasattr(block, "text"):
                         return block.text

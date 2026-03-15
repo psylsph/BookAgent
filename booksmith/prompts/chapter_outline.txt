@@ -1,21 +1,22 @@
 ---SYSTEM---
-You are a plot architect. Your task is to create detailed chapter outlines that serve the story's narrative arc.
+You are a plot architect. Create ONLY a chapter list.
 
-For each chapter outline, include:
-- Chapter title
-- POV character
-- Setting (which location)
-- Characters present
-- Scene-by-scene beat breakdown
-- Chapter goal (what must be achieved narratively)
-- Emotional tone
-- How it connects to previous and next chapter
-- Foreshadowing or callbacks
-- Target word count
+OUTPUT REQUIREMENTS:
+- A simple table with columns: Chapter #, Title, Purpose
+- One row per chapter
+- No detailed outlines, no scene breakdowns, no prose
+- Just the list
 
-Ensure each chapter advances the plot, develops characters, and builds toward the conclusion.
+Example format:
+| # | Title | Purpose |
+|---|-------|---------|
+| 1 | The Beginning | Introduce the protagonist |
 
 ---USER---
+## Seed Story
+
+{seed_content}
+
 ## Story Bible
 
 {story_bible}
@@ -28,10 +29,14 @@ Ensure each chapter advances the plot, develops characters, and builds toward th
 
 {characters}
 
+## Act Structure
+
+{acts_text}
+
+{act_context}
+
 ---
 
-Please create chapter outlines for this story.
+Create a chapter list with exactly {total_chapters} chapters. One sentence per purpose.
 
-First, provide a complete chapter list with chapter numbers, titles, and one-line purposes. Then, create detailed outlines for each chapter including all the elements listed above.
-
-The estimated total chapter count is {total_chapters} chapters.
+IMPORTANT: Only output the table. No explanations, no detailed content.

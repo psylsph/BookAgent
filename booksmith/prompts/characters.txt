@@ -8,7 +8,7 @@ Each character should have:
 - role: Their role in the story
 - description: One-line description
 
-Use characters explicitly mentioned or clearly implied in the seed story as the core cast. You may add supporting characters you feel are necessary to tell the story, but keep them minimal.
+CRITICAL: Use ONLY characters explicitly mentioned or clearly implied in the seed story. Do NOT invent new characters. Do NOT change character names, roles, or descriptions from what's in the seed. Only create profiles for characters that already exist in the seed material.
 
 ---USER---
 ## Seed Idea

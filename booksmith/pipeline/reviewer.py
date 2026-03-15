@@ -89,3 +89,72 @@ def get_review(
         return review, score
     except FileNotFoundError:
         return None, None
+
+
+def generate_outline_review(
+    project: Project,
+    client: APIClient,
+    chapter_num: int,
+) -> tuple[str, float]:
+    """Generate AI review for a chapter outline."""
+    console.print_header(f"Generating outline review for Chapter {chapter_num}...")
+
+    chapter_outline = project.get_chapter_outline(chapter_num)
+    story_bible = project.read_file("story_bible.md")
+
+    characters = project.get_characters()
+    character_profiles = []
+    for char in characters:
+        char_file = f"characters/{char['name'].replace(' ', '_')}.md"
+        try:
+            profile = project.read_file(char_file)
+            character_profiles.append(f"## {char['name']}\n{profile[:500]}")
+        except FileNotFoundError:
+            continue
+
+    character_text = "\n\n".join(character_profiles) or "No character profiles found."
+
+    prompt = f"""## OUTLINE REVIEW - NOT CHAPTER PROSE
+
+You are reviewing a CHAPTER OUTLINE (structure/scenes), NOT written prose.
+
+## Story Bible
+
+{story_bible}
+
+## Character Profiles
+
+{character_text}
+
+## Chapter Outline
+
+{chapter_outline}
+
+---
+
+OUTLINE REVIEW CRITERIA:
+
+1. **Story Alignment**: Does this outline follow from the story bible and serve the overall plot?
+2. **Chapter Purpose**: Is the purpose of this chapter clear and meaningful?
+3. **Character Logic**: Are character actions consistent with their established arcs?
+4. **Pacing**: Does the scene breakdown create good flow?
+5. **Continuity**: Any issues with world/character state?
+6. **Setup & Payoff**: Are seeds planted for future chapters?
+
+Provide a score 0-10 and specific feedback. Focus on structural improvements, not prose quality."""
+
+    review = ""
+    for chunk in client.stream(
+        stage="outline_reviewer",
+        system="You are a professional book editor and plot architect. Your task is to review chapter outlines for coherence, pacing, and story alignment.",
+        user_message=prompt,
+        project_config=project.config,
+    ):
+        review += chunk
+
+    score = extract_score(review) or 5.0
+
+    review_file = f"reviews/chapter_{chapter_num}_outline_review.md"
+    project.write_file(review_file, review)
+
+    return review, score

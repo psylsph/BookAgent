@@ -34,12 +34,18 @@ python -m booksmith new my_book --seed seed.md
 python -m booksmith resume my_book
 ```
 
+4. **Or with YOLO mode** (auto-approve, single AI review pass):
+```bash
+python -m booksmith --yolo resume my_book
+```
+
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
 | `new <name> --seed <file>` | Create new project |
 | `resume <name>` | Continue writing |
+| `resume <name> --yolo` | Auto-approve all stages |
 | `status <name>` | Show project status |
 | `chapter <name> --n <N>` | Jump to chapter N |
 | `export <name>` | Export manuscript |
@@ -57,11 +63,13 @@ projects/
     │   ├── character_index.json
     │   └── <name>.md
     ├── chapter_outlines/
+    │   ├── chapter_list.md
     │   └── chapter_<N>.md
     ├── chapters/
     │   └── chapter_<N>.md
     ├── reviews/
-    │   └── chapter_<N>_review.md
+    │   ├── chapter_<N>_review.md
+    │   └── chapter_<N>_outline_review.md
     └── summaries/
         └── macro_summary.md
 ```
@@ -71,47 +79,79 @@ projects/
 Copy `.env.example` to `.env` and configure:
 
 ```bash
-# API Keys (at least one required)
-ANTHROPIC_API_KEY=your_local_api_key
-ZENMUX_API_KEY=your_zenmux_api_key
+# API Key
+ANTHROPIC_API_KEY=your_api_key
 
-# Model Configuration
-ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air
-ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7
-ANTHROPIC_DEFAULT_OPUS_MODEL=glm-4.7
+# Remote model (zenmux or other providers)
+ANTHROPIC_BASE_URL=https://zenmux.ai/api/anthropic
+ANTHROPIC_REMOTE_MODEL=deepseek/deepseek-v3.2-exp
+ANTHROPIC_REMOTE_CONTEXT=128000
 
-# Base URLs
-LOCAL_BASE_URL=http://localhost:11434/v1    # For Ollama etc.
-ZENMUX_BASE_URL=https://zenmux.ai/api/anthropic
+# Local model (Ollama, LM Studio, etc.)
+LOCAL_BASE_URL=http://localhost:11434/v1
+ANTHROPIC_LOCAL_MODEL=mistralai/mistral-nemo-instruct-2407
+ANTHROPIC_LOCAL_CONTEXT=32768
+
+# Writing settings
+DEFAULT_MIN_WORDS=2000
+
+# Temperature per stage (optional)
+DEFAULT_TEMPERATURE=0.7
+TEMP_CHAPTER_OUTLINER=1.0
+TEMP_CHAPTER_WRITER=1.0
+TEMP_REVIEWER=0.3
 ```
 
-Or set environment variables directly.
+## Model Assignment by Stage
 
-## Model Assignment
-
-| Stage | Model | Provider |
-|-------|-------|----------|
-| Story Bible | glm-4.5-air | Local |
-| World Builder | glm-4.5-air | Local |
-| Characters | glm-4.5-air | Local |
-| Chapter Outliner | glm-4.5-air | Local |
-| Chapter Writer | glm-4.7 | zenmux.ai |
-| AI Reviewer | glm-4.5-air | Local |
-| Macro Summary | glm-4.5-air | Local |
-
-## Options
-
-- `--min-words` - Minimum words per chapter (default: 2000)
-- `--pov` - Point of view (default: third person limited)
-- `--tense` - Tense (default: past)
+| Stage | Provider | Model | Temperature |
+|-------|----------|-------|-------------|
+| Story Bible | local | ANTHROPIC_LOCAL_MODEL | 0.7 |
+| World Builder | local | ANTHROPIC_LOCAL_MODEL | 0.7 |
+| Characters | local | ANTHROPIC_LOCAL_MODEL | 0.7 |
+| Chapter Outliner | local | ANTHROPIC_LOCAL_MODEL | 1.0 |
+| Chapter Writer | local | ANTHROPIC_LOCAL_MODEL | 1.0 |
+| Reviewer | local | ANTHROPIC_LOCAL_MODEL | 0.3 |
+| Outline Review | local | ANTHROPIC_LOCAL_MODEL | 0.3 |
+| Macro Summary | local | ANTHROPIC_LOCAL_MODEL | 0.3 |
 
 ## Approval Workflow
 
 Each stage shows content and prompts:
 - `[A]` Approve - proceed to next stage
 - `[E]` Edit - open in $EDITOR, then reload
-- `[R]` Regenerate - regenerate with optional extra instruction
-
-Chapter writing adds:
+- `[R]` Regenerate - regenerate content
 - `[F]` Feedback - give feedback and regenerate
-- `[S]` Skip - approve without review
+- `[S]` Skip - skip to next (chapter outlines and chapters)
+- Lowercase input also works (a, r, f, e, s)
+
+### YOLO Mode
+
+Use `--yolo` flag for hands-off operation:
+```bash
+python -m booksmith --yolo resume my_book
+```
+
+YOLO mode:
+- Auto-approves outline/chapter generation
+- Runs AI review and **regenerates with AI feedback** automatically
+- Single pass per chapter (no regeneration loop)
+
+### Chapter Outline Review Flow
+
+1. Generate chapter list from story bible
+2. For each chapter:
+   - Show outline to user
+   - User can A/R/F/E/S
+   - If approved, run AI outline review
+   - Show AI feedback, user can Continue or Regenerate with feedback
+3. Proceed to chapter writing loop
+
+### Chapter Writing Flow
+
+1. Generate chapter from outline
+2. Run AI reviewer
+3. Show review score and content
+4. User can A/R/F/E/S
+5. If approved, update macro summary
+6. Proceed to next chapter

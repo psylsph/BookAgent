@@ -7,33 +7,87 @@ from ..storage.project import Project
 from ..ui import console
 
 
+def extract_act_structure(story_bible: str) -> List[dict]:
+    """Extract act structure from story bible.
+
+    Returns list of acts with their descriptions and chapter ranges.
+    """
+    acts = []
+
+    # Pattern to match act definitions
+    act_patterns = [
+        r"(?:Act\s*(\d+)|Act\s*([IVX]+))[:\s]+(.+?)(?=(?:Act\s*\d+|Act\s*[IVX]+)|$)",
+        r"(?:Part\s*(\d+)|Part\s*([IVX]+))[:\s]+(.+?)(?=(?:Part\s*\d+|Part\s*[IVX]+)|$)",
+    ]
+
+    for pattern in act_patterns:
+        matches = list(re.finditer(pattern, story_bible, re.IGNORECASE | re.DOTALL))
+        if matches:
+            for match in matches:
+                act_num = match.group(1) or match.group(2)
+                description = match.group(3).strip()[:200]  # Limit length
+                acts.append(
+                    {
+                        "number": int(act_num) if act_num.isdigit() else act_num,
+                        "description": description,
+                    }
+                )
+            break
+
+    # If no explicit acts found, try to infer from chapter count
+    if not acts:
+        # Default to 3 acts if no structure found
+        acts = [
+            {
+                "number": 1,
+                "description": "Setup - Introduce characters, world, and inciting incident",
+            },
+            {"number": 2, "description": "Confrontation - Rising action and obstacles"},
+            {"number": 3, "description": "Resolution - Climax and conclusion"},
+        ]
+
+    return acts
+
+
 def parse_chapter_list(text: str) -> List[dict]:
     """Parse chapter list from AI response."""
     chapters = []
 
     lines = text.split("\n")
-    current_chapter = {}
-
     for line in lines:
         line = line.strip()
+        if not line or line.startswith("#") or line.startswith("|"):
+            # Skip empty lines, headers, and table dividers
+            if "---" in line or "===" in line:
+                continue
+            if line.startswith("|"):
+                # Check if it's a table row with a number
+                if not re.match(r"\|\s*\d+\s*\|", line):
+                    continue
 
-        if not line:
+        # Match table row format: | 1 | Ambush | Purpose |
+        table_match = re.match(r"\|\s*(\d+)\s*\|\s*([^|]+)\|\s*([^|]+)\|", line)
+        if table_match:
+            chapters.append(
+                {
+                    "number": int(table_match.group(1)),
+                    "title": table_match.group(2).strip(),
+                    "purpose": table_match.group(3).strip(),
+                }
+            )
             continue
 
-        num_match = re.match(r"^(\d+)[\.\):]\s*(.+)$", line)
+        # Match numbered list format: 1. Title - Purpose
+        num_match = re.match(r"^(\d+)[\.\):]\s*(.+?)(?:\s*[-–—]\s*(.+))?$", line)
         if num_match:
-            if current_chapter:
-                chapters.append(current_chapter)
-            current_chapter = {
-                "number": int(num_match.group(1)),
-                "title": num_match.group(2).strip(),
-                "purpose": "",
-            }
-        elif current_chapter and line.startswith("-"):
-            current_chapter["purpose"] = line.lstrip("- ").strip()
-
-    if current_chapter:
-        chapters.append(current_chapter)
+            chapters.append(
+                {
+                    "number": int(num_match.group(1)),
+                    "title": num_match.group(2).strip(),
+                    "purpose": num_match.group(3).strip() if num_match.group(3) else "",
+                }
+            )
+            continue
 
     return chapters
 
@@ -42,11 +96,12 @@ def generate_chapter_list(
     project: Project,
     client: APIClient,
 ) -> List[dict]:
-    """Generate initial chapter list."""
+    """Generate chapter list."""
     console.print_header("Generating Chapter List...")
 
     story_bible = project.read_file("story_bible.md")
     world = project.read_file("world.md")
+    seed_content = project.read_file(project.seed_file)
 
     characters = project.get_characters()
 
@@ -56,7 +111,6 @@ def generate_chapter_list(
         char_file = f"characters/{c['name'].replace(' ', '_')}.md"
         try:
             profile = project.read_file(char_file)
-            # Use first 800 chars of profile for context
             character_parts.append(
                 f"## {c['name']} ({c.get('role', 'Character')})\n{profile[:800]}"
             )
@@ -69,12 +123,19 @@ def generate_chapter_list(
 
     total_chapters = project.total_chapters or 24
 
+    # Extract act structure for context
+    acts = extract_act_structure(story_bible)
+    acts_text = "\n".join([f"Act {a['number']}: {a['description']}" for a in acts])
+
     system_prompt, user_prompt = format_prompt(
         "chapter_outline",
+        seed_content=seed_content,
         story_bible=story_bible,
         world=world,
         characters=character_text,
         total_chapters=str(total_chapters),
+        acts_text=acts_text,
+        act_context="",
     )
 
     response = client.generate(
@@ -86,6 +147,10 @@ def generate_chapter_list(
 
     chapters = parse_chapter_list(response)
 
+    # Save chapter list with header
+    list_content = f"# Chapter List\n\n{response}"
+    project.write_file("chapter_outlines/chapter_list.md", list_content)
+
     return chapters
 
 
@@ -94,12 +159,14 @@ def generate_chapter_outline(
     client: APIClient,
     chapter_info: dict,
     all_chapters: List[dict],
+    feedback: Optional[str] = None,
 ) -> str:
     """Generate detailed outline for a single chapter."""
     console.print_header(f"Generating outline for Chapter {chapter_info['number']}...")
 
     story_bible = project.read_file("story_bible.md")
     world = project.read_file("world.md")
+    seed_content = project.read_file(project.seed_file)
 
     story_bible_summary = story_bible[:1000] if len(story_bible) > 1000 else story_bible
 
@@ -141,37 +208,84 @@ def generate_chapter_outline(
             f"\n\n**Next chapter ({next_chapter['number']}):** {next_chapter['title']}"
         )
 
-    prompt = f"""## Story Bible (summary)
+    prev_num = prev_chapter["number"] if prev_chapter else 1
+    prev_title = prev_chapter["title"] if prev_chapter else "N/A"
+    next_num = next_chapter["number"] if next_chapter else "last"
+    next_title = next_chapter["title"] if next_chapter else "N/A"
+
+    feedback_text = f"**User Feedback:** {feedback}" if feedback else ""
+
+    if prev_chapter:
+        prev_ref = f"Chapter {prev_num} - {prev_title}"
+    else:
+        prev_ref = "the Seed Story / Prologue"
+
+    prompt = f"""## Seed Story
+
+{seed_content}
+
+## Story Bible (summary)
 
 {story_bible_summary}
+
+## World Details
+
+{world[:1500]}
 
 ## Characters
 
 {characters_text}
 
-## Chapter List
+## Chapter List (Full Story Arc)
 
 {chapter_list_text}
 
-## Chapter to Outline
+---
 
-**Chapter {chapter_info["number"]}: {chapter_info["title"]}**
-Purpose: {chapter_info.get("purpose", "")}
-{connection_text}
+## THIS CHAPTER: Chapter {chapter_info["number"]}: {chapter_info["title"]}
+
+**Purpose:** {chapter_info.get("purpose", "")}
+
+**Previous chapter:** {prev_ref}
+**Next chapter:** Chapter {next_num} - {next_title}
+
+{feedback_text}
 
 ---
 
-Please create a detailed outline for this chapter including:
-- Chapter title
-- POV character
-- Setting (which location)
-- Characters present
-- Scene-by-scene beat breakdown
-- Chapter goal (what must be achieved narratively)
-- Emotional tone
-- How it connects to previous and next chapter
-- Foreshadowing or callbacks
-- Target word count (around 2000-3000 words)
+## Required Outline Structure
+
+Create a detailed outline using this exact structure:
+
+### Chapter {chapter_info["number"]}: [Title]
+
+**POV Character:** [Name and brief characterization]
+**Setting:** [Location and time of day/atmosphere]
+**Characters Present:** [List who appears]
+
+**Chapter Goal:** [What must happen narratively - the one thing this chapter must achieve]
+
+**Emotional Arc:** [Starting mood → ending mood]
+
+**Scene Breakdown:**
+1. [Opening scene - where/who/what]
+2. [Second scene - escalation]
+3. [Third scene - climax/tension peak]
+4. [Closing beat - transition to next chapter]
+
+**Connections:**
+- How it follows from {prev_ref}: [specific link]
+- How it sets up Chapter {next_num}: [specific setup]
+
+**Foreshadowing/Callbacks:** [What threads are planted or resolved]
+
+**Target Word Count:** [2000-3000 words]
+
+---
+
+IMPORTANT: Ground everything in the Seed Story. This chapter must feel like a natural continuation of the established plot and characters.
+
+CRITICAL: Do NOT write actual chapter prose. Only output the structured outline with scene beats. No narrative text, no dialogue, no descriptions of what characters say or do in full sentences. Just the outline structure.
 """
 
     outline = client.stream(
@@ -200,6 +314,20 @@ def generate_all_chapter_outlines(
     if chapters is None:
         chapters = generate_chapter_list(project, client)
 
+    # If parsing failed, try to load from existing outline files
+    if not chapters:
+        outlines_dir = project.path / "chapter_outlines"
+        if outlines_dir.exists():
+            for f in sorted(outlines_dir.glob("chapter_[0-9]*.md")):
+                try:
+                    num = int(f.stem.split("_")[1])
+                except (ValueError, IndexError):
+                    continue
+                content = f.read_text()
+                title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
+                title = title_match.group(1) if title_match else f"Chapter {num}"
+                chapters.append({"number": num, "title": title, "purpose": ""})
+
     for chapter_info in chapters:
         generate_chapter_outline(project, client, chapter_info, chapters)
 
@@ -210,13 +338,17 @@ def regenerate_chapter_outline(
     project: Project,
     client: APIClient,
     chapter_num: int,
+    feedback: Optional[str] = None,
 ) -> str:
     """Regenerate a specific chapter outline."""
     all_outlines_dir = project.path / "chapter_outlines"
     chapters = []
 
-    for f in sorted(all_outlines_dir.glob("chapter_*.md")):
-        num = int(f.stem.split("_")[1])
+    for f in sorted(all_outlines_dir.glob("chapter_[0-9]*.md")):
+        try:
+            num = int(f.stem.split("_")[1])
+        except (ValueError, IndexError):
+            continue  # Skip non-numeric chapter files like chapter_list.md
         content = f.read_text()
         title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
         title = title_match.group(1) if title_match else f"Chapter {num}"
@@ -226,6 +358,8 @@ def regenerate_chapter_outline(
 
     for chapter_info in chapters:
         if chapter_info["number"] == chapter_num:
-            return generate_chapter_outline(project, client, chapter_info, chapters)
+            return generate_chapter_outline(
+                project, client, chapter_info, chapters, feedback
+            )
 
     raise ValueError(f"Chapter not found: {chapter_num}")

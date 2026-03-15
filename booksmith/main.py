@@ -5,7 +5,7 @@ from typing import Optional
 
 import typer
 
-from .api_client import APIClient
+from .api_client import APIClient, DEFAULT_MIN_WORDS
 from .storage.project import Project, find_project, list_projects
 from .ui.console import (
     console,
@@ -35,6 +35,25 @@ from .pipeline import (
 
 app = typer.Typer(help="Booksmith - AI-Assisted Book Writing Pipeline")
 
+# Global yolo mode flag
+yolo_mode = False
+
+
+@app.callback()
+def callback(
+    ctx: typer.Context,
+    yolo: bool = typer.Option(
+        False, "--yolo", help="Auto-approve but always regenerate after AI review"
+    ),
+):
+    """Global options for Booksmith."""
+    global yolo_mode
+    yolo_mode = yolo
+    if yolo:
+        console.print(
+            "[yellow]YOLO mode enabled - will auto-approve and regenerate after AI review[/yellow]"
+        )
+
 
 def get_projects_dir() -> Path:
     """Get the projects directory."""
@@ -46,7 +65,7 @@ def new(
     name: str = typer.Argument(..., help="Project name"),
     seed: Path = typer.Option(..., "--seed", "-s", help="Path to seed file"),
     min_words: int = typer.Option(
-        2000, "--min-words", help="Minimum words per chapter"
+        DEFAULT_MIN_WORDS, "--min-words", help="Minimum words per chapter"
     ),
     pov: str = typer.Option("third person limited", "--pov", help="Point of view"),
     tense: str = typer.Option("past", "--tense", help="Tense"),
@@ -218,29 +237,25 @@ def run_characters_phase(
             pass
 
     # Check if full profile files exist
+    chars_dir = project.path / "characters"
+    existing_profile_files = list(chars_dir.glob("*.md")) if chars_dir.exists() else []
+    has_full_profiles = len(existing_profile_files) > 0
+
     chars = project.get_characters()
-    has_full_profiles = False
-    if chars:
-        has_full_profiles = all(
-            project.file_exists(f"characters/{c['name'].replace(' ', '_')}.md")
-            for c in chars
-        )
+
+    # Use character_list if chars is empty
+    if not chars and character_list:
+        chars = character_list
 
     if not force_regenerate and has_full_profiles:
-        print(f"Using existing {len(chars)} character profiles.")
+        print(f"Using existing {len(existing_profile_files)} character profiles.")
         run_chapters_phase(project, client)
         return
 
-    if character_list and not has_full_profiles:
-        print(f"Found character list with {len(character_list)} characters.")
-        _show_and_review_characters(project, client, character_list, run_chapters_phase)
+    if not force_regenerate and chars:
+        print(f"Characters already exist. Run chapters phase.")
+        run_chapters_phase(project, client)
         return
-
-    chars = project.get_characters()
-    if chars:
-        if not confirm("Characters already exist. Regenerate?"):
-            run_chapters_phase(project, client)
-            return
 
     character_list = characters.generate_character_list(project, client)
 
@@ -336,45 +351,131 @@ def run_chapters_phase(
     """Run chapter outlines phase."""
     print_header("Stage 4: Chapter Outlines")
 
-    # Check if chapter outlines already exist
-    outlines_dir = project.path / "chapter_outlines"
-    existing_outlines = (
-        list(outlines_dir.glob("chapter_*.md")) if outlines_dir.exists() else []
-    )
+    # Check if chapter list already exists
+    chapter_list_path = project.path / "chapter_outlines" / "chapter_list.md"
+    existing_chapters = None
 
-    if not force_regenerate and len(existing_outlines) >= project.total_chapters:
-        print(f"Using existing {len(existing_outlines)} chapter outlines.")
-        first_chapter = (
-            project.current_chapter + 1 if project.current_chapter > 0 else 1
+    if chapter_list_path.exists() and not force_regenerate:
+        try:
+            content = chapter_list_path.read_text()
+            if content.strip():
+                existing_chapters = chapter_outliner.parse_chapter_list(content)
+                if existing_chapters:
+                    print(
+                        f"Using existing chapter list ({len(existing_chapters)} chapters)."
+                    )
+                    first_chapter = 1
+                    review_chapter_outlines(
+                        project, client, existing_chapters, first_chapter
+                    )
+                    return
+        except Exception as e:
+            print(f"Error loading existing chapter list: {e}")
+
+    chapters = chapter_outliner.generate_chapter_list(project, client)
+
+    if not chapters:
+        print_error(
+            "Failed to generate chapter list. Please check the output and try again."
         )
+        return
+
+    # Warn if chapter count doesn't match story bible
+    expected = project.total_chapters
+    if len(chapters) != expected:
+        print_error(
+            f"Warning: Story bible specifies {expected} chapters but got {len(chapters)}. "
+            f"Please regenerate with feedback to adjust."
+        )
+
+    first_chapter = 1
+    review_chapter_outlines(project, client, chapters, first_chapter)
+
+
+def review_chapter_outlines(
+    project: Project, client: APIClient, chapters: list, chapter_num: int
+):
+    """Review individual chapter outlines one at a time."""
+    if chapter_num > len(chapters):
+        print_success(f"Reviewed all {len(chapters)} chapter outlines.")
+        first_chapter = 1
         run_chapter_loop(project, client, first_chapter)
         return
 
-    chapters = chapter_outliner.generate_all_chapter_outlines(project, client)
+    chapter = chapters[chapter_num - 1]
+    outline_path = project.path / "chapter_outlines" / f"chapter_{chapter['number']}.md"
 
-    console.print("\n[cyan]Generated Chapter Outlines:[/cyan]")
-    for ch in chapters:
-        console.print(f"  {ch['number']}. {ch['title']}")
+    # Generate outline if it doesn't exist
+    if not outline_path.exists():
+        chapter_outliner.generate_chapter_outline(project, client, chapter, chapters)
 
-    choice = ask_choice(
-        "Chapter Outlines",
-        ["A", "R", "F", "E"],
-    )
+    if outline_path.exists():
+        outline_content = outline_path.read_text()
+        print_markdown(
+            outline_content,
+            title=f"Chapter {chapter['number']}: {chapter['title']}",
+            border_style="green",
+        )
+
+    # In yolo mode, auto-approve
+    if yolo_mode:
+        choice = "A"
+        console.print("[yellow]YOLO: Auto-approving outline...[/yellow]")
+    else:
+        choice = ask_choice(
+            f"Chapter {chapter['number']} Outline",
+            ["A", "R", "F", "E", "S"],
+        )
 
     if choice == "A":
-        print_success(f"Approved {len(chapters)} chapter outlines.")
-        first_chapter = 1
-        run_chapter_loop(project, client, first_chapter)
+        print_success(f"Chapter {chapter['number']} outline approved.")
+        # AI review step
+        review_text, score = reviewer.generate_outline_review(
+            project, client, chapter["number"]
+        )
+
+        print_panel(
+            review_text,
+            title=f"AI Outline Review (Score: {score}/10)",
+            border_style="yellow",
+        )
+
+        # In yolo mode, regenerate with AI feedback then continue
+        if yolo_mode:
+            console.print("[yellow]YOLO: Regenerating with AI feedback...[/yellow]")
+            chapter_outliner.regenerate_chapter_outline(
+                project, client, chapter["number"], feedback=review_text
+            )
+            review_chapter_outlines(project, client, chapters, chapter_num + 1)
+        else:
+            review_choice = ask_choice(
+                f"AI Review for Chapter {chapter['number']}",
+                ["C", "R"],
+            )
+
+            if review_choice == "R":
+                # Regenerate outline with AI feedback
+                chapter_outliner.regenerate_chapter_outline(
+                    project, client, chapter["number"], feedback=review_text
+                )
+                review_chapter_outlines(project, client, chapters, chapter_num)
+            else:
+                # Continue without changes
+                review_chapter_outlines(project, client, chapters, chapter_num + 1)
     elif choice == "R":
-        run_chapters_phase(project, client)
+        chapter_outliner.regenerate_chapter_outline(project, client, chapter["number"])
+        review_chapter_outlines(project, client, chapters, chapter_num)
     elif choice == "F":
         feedback = console.input("What would you like to change? ").strip()
-        # Regenerate with feedback - for now just regenerate
-        run_chapters_phase(project, client)
+        chapter_outliner.regenerate_chapter_outline(
+            project, client, chapter["number"], feedback
+        )
+        review_chapter_outlines(project, client, chapters, chapter_num)
     elif choice == "E":
-        edit_in_editor(str(project.path / "chapter_outlines"))
-        first_chapter = 1
-        run_chapter_loop(project, client, first_chapter)
+        edit_in_editor(str(outline_path))
+        review_chapter_outlines(project, client, chapters, chapter_num)
+    elif choice == "S":
+        review_chapter_outlines(project, client, chapters, chapter_num + 1)
 
 
 def run_chapter_loop(project: Project, client: APIClient, chapter_num: int):
@@ -403,24 +504,33 @@ def run_chapter_loop(project: Project, client: APIClient, chapter_num: int):
     else:
         print_error("Below minimum word count.")
 
-    choice = ask_chapter_approval("Chapter")
-
-    if choice == "A":
-        approve_chapter(project, client, chapter_num)
-    elif choice == "R":
-        chapter_writer.regenerate_chapter(project, client, chapter_num)
-        run_chapter_loop(project, client, chapter_num)
-    elif choice == "F":
-        feedback = console.input("Enter feedback: ").strip()
-        chapter_writer.regenerate_chapter(project, client, chapter_num, feedback)
-        run_chapter_loop(project, client, chapter_num)
-    elif choice == "E":
-        edit_in_editor(
-            str(project.path / "chapters" / f"chapter_{chapter_num}_draft.md")
+    # In yolo mode, regenerate with AI feedback instead of auto-approving
+    if yolo_mode:
+        console.print("[yellow]YOLO: Regenerating with AI feedback...[/yellow]")
+        chapter_writer.regenerate_chapter(
+            project, client, chapter_num, feedback=review_text
         )
-        approve_chapter(project, client, chapter_num)
-    elif choice == "S":
-        approve_chapter(project, client, chapter_num)
+        run_chapter_loop(project, client, chapter_num)
+    else:
+        choice = ask_chapter_approval("Chapter")
+
+        if choice == "A":
+            approve_chapter(project, client, chapter_num)
+        elif choice == "R":
+            chapter_writer.regenerate_chapter(project, client, chapter_num)
+            run_chapter_loop(project, client, chapter_num)
+        elif choice == "F":
+            feedback = console.input("Enter feedback: ").strip()
+            chapter_writer.regenerate_chapter(project, client, chapter_num, feedback)
+            run_chapter_loop(project, client, chapter_num)
+        elif choice == "E":
+            edit_in_editor(
+                str(project.path / "chapters" / f"chapter_{chapter_num}_draft.md")
+            )
+            approve_chapter(project, client, chapter_num)
+        elif choice == "S":
+            print(f"Skipping chapter {chapter_num}...")
+            run_chapter_loop(project, client, chapter_num + 1)
 
 
 def update_macro_summary(project: Project, client: APIClient, chapter_num: int):

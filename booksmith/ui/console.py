@@ -95,6 +95,7 @@ def ask_choice(prompt: str, choices: list[str], default: Optional[str] = None) -
         "F": "eedback",
         "E": "dit",
         "S": "kip",
+        "C": "ontinue",
     }
 
     choice_parts = []
@@ -106,10 +107,18 @@ def ask_choice(prompt: str, choices: list[str], default: Optional[str] = None) -
             choice_parts.append(f"[{c}]{word}")
 
     choice_str = "/".join(choice_parts)
+
+    # Accept both upper and lowercase
+    choices_lower = [c.lower() for c in choices]
+    choices_all = choices + choices_lower
+
     result = Prompt.ask(
-        f"{prompt} {choice_str}", choices=choices, default=default, show_choices=False
+        f"{prompt} {choice_str}",
+        choices=choices_all,
+        default=default.upper(),
+        show_choices=False,
     )
-    return result if result else choices[0]
+    return result.upper() if result else choices[0]
 
 
 def confirm(prompt: str, default: bool = False) -> bool:

@@ -211,7 +211,10 @@ class BookRetriever:
             return chunks
 
         for md_file in sorted(chapters_dir.glob("chapter_*.md")):
-            chapter_num = md_file.stem.split("_")[1]
+            try:
+                chapter_num = str(int(md_file.stem.split("_")[1]))
+            except (ValueError, IndexError):
+                continue
             content = md_file.read_text()
 
             scenes = content.split("\n---\n")

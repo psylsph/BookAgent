@@ -114,6 +114,7 @@ def generate_character_profile(
 
     story_bible = project.read_file("story_bible.md")
     world = project.read_file("world.md")
+    seed_content = project.read_file(project.seed_file)
 
     character_list_text = "\n".join(
         [
@@ -122,7 +123,11 @@ def generate_character_profile(
         ]
     )
 
-    prompt = f"""## Story Bible
+    prompt = f"""## Seed Story
+
+{seed_content}
+
+## Story Bible
 
 {story_bible}
 
@@ -144,13 +149,15 @@ Description: {character_info.get("description", "")}
 
 Please create a detailed profile for {character_info["name"]} including:
 - Full name, age, physical description
-- Backstory
+- Backstory (grounded in seed story details)
 - Personality and voice notes
 - Motivation and goal
 - Internal conflict
 - Arc summary
 - Relationships to other characters
 - Key possessions or symbols
+
+IMPORTANT: Base this profile ONLY on information explicitly stated or clearly implied in the Seed Story. Do not invent details not present in the source material.
 """
 
     profile = client.stream(
@@ -201,7 +208,7 @@ def regenerate_character(
     client: APIClient,
     character_name: str,
 ) -> str:
-    """Regenerate a specific character's profile."""
+    """Regenerate a specific character profile."""
     characters = project.get_characters()
 
     for char_info in characters:

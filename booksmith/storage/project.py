@@ -4,10 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from booksmith.api_client import ANTHROPIC_LOCAL_MODEL
+from booksmith.api_client import ANTHROPIC_LOCAL_MODEL, DEFAULT_MIN_WORDS
 
 DEFAULT_CONFIG = {
-    "min_words_per_chapter": 2000,
+    "min_words_per_chapter": DEFAULT_MIN_WORDS,
     "model": ANTHROPIC_LOCAL_MODEL,
     "pov": "third person limited",
     "tense": "past",
