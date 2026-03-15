@@ -9,16 +9,31 @@ from ..ui import console
 
 def extract_chapter_count(story_bible: str) -> int:
     """Extract suggested chapter count from story bible."""
-    patterns = [
-        r"(\d+)\s*chapters?",
-        r"chapter\s*count[:\s]*(\d+)",
-        r"approximately\s*(\d+)\s*chapters?",
-    ]
+    # Try exact match first
+    exact_match = re.search(
+        r"(\d+)\s*chapters?(?!\s*-\s*\d+)", story_bible, re.IGNORECASE
+    )
+    if exact_match:
+        return int(exact_match.group(1))
 
-    for pattern in patterns:
-        match = re.search(pattern, story_bible, re.IGNORECASE)
-        if match:
-            return int(match.group(1))
+    # Try chapter count line
+    count_match = re.search(r"chapter\s*count[:\s=]+(\d+)", story_bible, re.IGNORECASE)
+    if count_match:
+        return int(count_match.group(1))
+
+    # Try approximately X chapters
+    approx_match = re.search(
+        r"approximately\s+(\d+)\s*chapters?", story_bible, re.IGNORECASE
+    )
+    if approx_match:
+        return int(approx_match.group(1))
+
+    # Try range like "40-50 chapters" - use lower bound
+    range_match = re.search(
+        r"(\d+)\s*-\s*(\d+)\s*chapters?", story_bible, re.IGNORECASE
+    )
+    if range_match:
+        return int(range_match.group(1))
 
     return 24
 

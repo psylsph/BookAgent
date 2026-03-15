@@ -12,3 +12,4 @@ BOOKSMITH_SPEC.md
 .venv
 projects
 .env
+.coverage

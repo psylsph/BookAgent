@@ -35,8 +35,12 @@ from .pipeline import (
 
 app = typer.Typer(help="Booksmith - AI-Assisted Book Writing Pipeline")
 
-# Global yolo mode flag
-yolo_mode = False
+_yolo_mode = False
+
+
+def get_yolo_mode() -> bool:
+    """Get current yolo mode state."""
+    return _yolo_mode
 
 
 @app.callback()
@@ -47,8 +51,8 @@ def callback(
     ),
 ):
     """Global options for Booksmith."""
-    global yolo_mode
-    yolo_mode = yolo
+    global _yolo_mode
+    _yolo_mode = yolo
     if yolo:
         console.print(
             "[yellow]YOLO mode enabled - will auto-approve and regenerate after AI review[/yellow]"
@@ -361,8 +365,8 @@ def run_chapters_phase(
             if content.strip():
                 existing_chapters = chapter_outliner.parse_chapter_list(content)
                 if existing_chapters:
-                    print(
-                        f"Using existing chapter list ({len(existing_chapters)} chapters)."
+                    console.print(
+                        f"[green]Using existing chapter list ({len(existing_chapters)} chapters).[/green]"
                     )
                     first_chapter = 1
                     review_chapter_outlines(
@@ -405,9 +409,20 @@ def review_chapter_outlines(
     chapter = chapters[chapter_num - 1]
     outline_path = project.path / "chapter_outlines" / f"chapter_{chapter['number']}.md"
 
+    console.print(
+        f"[dim]Checking outline for chapter {chapter['number']}: {outline_path.exists()}[/dim]"
+    )
+
     # Generate outline if it doesn't exist
     if not outline_path.exists():
+        console.print(
+            f"[yellow]Generating missing outline for chapter {chapter['number']}...[/yellow]"
+        )
         chapter_outliner.generate_chapter_outline(project, client, chapter, chapters)
+    else:
+        console.print(
+            f"[dim]Using existing outline for chapter {chapter['number']}[/dim]"
+        )
 
     if outline_path.exists():
         outline_content = outline_path.read_text()
@@ -418,7 +433,7 @@ def review_chapter_outlines(
         )
 
     # In yolo mode, auto-approve
-    if yolo_mode:
+    if get_yolo_mode():
         choice = "A"
         console.print("[yellow]YOLO: Auto-approving outline...[/yellow]")
     else:
@@ -441,7 +456,7 @@ def review_chapter_outlines(
         )
 
         # In yolo mode, regenerate with AI feedback then continue
-        if yolo_mode:
+        if get_yolo_mode():
             console.print("[yellow]YOLO: Regenerating with AI feedback...[/yellow]")
             chapter_outliner.regenerate_chapter_outline(
                 project, client, chapter["number"], feedback=review_text
@@ -505,7 +520,7 @@ def run_chapter_loop(project: Project, client: APIClient, chapter_num: int):
         print_error("Below minimum word count.")
 
     # In yolo mode, regenerate with AI feedback instead of auto-approving
-    if yolo_mode:
+    if get_yolo_mode():
         console.print("[yellow]YOLO: Regenerating with AI feedback...[/yellow]")
         chapter_writer.regenerate_chapter(
             project, client, chapter_num, feedback=review_text

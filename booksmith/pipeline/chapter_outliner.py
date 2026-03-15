@@ -242,10 +242,14 @@ def generate_chapter_outline(
 
 ---
 
-## THIS CHAPTER: Chapter {chapter_info["number"]}: {chapter_info["title"]}
+## GENERATE CHAPTER NUMBER {chapter_info["number"]}: {chapter_info["title"]}
 
-**Purpose:** {chapter_info.get("purpose", "")}
+**This is Chapter {chapter_info["number"]} in the story sequence.** You are generating the outline for the {chapter_info["number"]}th chapter of this book.
 
+**Title (MUST USE EXACTLY):** {chapter_info["title"]}
+**Purpose (MUST FOLLOW):** {chapter_info.get("purpose", "")}
+
+**Story Sequence Position:** This is chapter {chapter_info["number"]} out of {len(all_chapters)} chapters.
 **Previous chapter:** {prev_ref}
 **Next chapter:** Chapter {next_num} - {next_title}
 
@@ -255,9 +259,9 @@ def generate_chapter_outline(
 
 ## Required Outline Structure
 
-Create a detailed outline using this exact structure:
+**IMPORTANT**: Write the outline for CHAPTER {chapter_info["number"]} ({chapter_info["title"]}), not any other chapter. The content must match this position in the story.
 
-### Chapter {chapter_info["number"]}: [Title]
+### {chapter_info["title"]}
 
 **POV Character:** [Name and brief characterization]
 **Setting:** [Location and time of day/atmosphere]
@@ -341,20 +345,25 @@ def regenerate_chapter_outline(
     feedback: Optional[str] = None,
 ) -> str:
     """Regenerate a specific chapter outline."""
-    all_outlines_dir = project.path / "chapter_outlines"
-    chapters = []
-
-    for f in sorted(all_outlines_dir.glob("chapter_[0-9]*.md")):
-        try:
-            num = int(f.stem.split("_")[1])
-        except (ValueError, IndexError):
-            continue  # Skip non-numeric chapter files like chapter_list.md
-        content = f.read_text()
-        title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
-        title = title_match.group(1) if title_match else f"Chapter {num}"
-        chapters.append({"number": num, "title": title, "purpose": ""})
-
-    chapters.sort(key=lambda x: x["number"])
+    # Read from chapter_list.md to get correct titles and purposes
+    chapter_list_path = project.path / "chapter_outlines" / "chapter_list.md"
+    if chapter_list_path.exists():
+        content = chapter_list_path.read_text()
+        chapters = parse_chapter_list(content)
+    else:
+        # Fallback: read from individual files
+        chapters = []
+        all_outlines_dir = project.path / "chapter_outlines"
+        for f in sorted(all_outlines_dir.glob("chapter_[0-9]*.md")):
+            try:
+                num = int(f.stem.split("_")[1])
+            except (ValueError, IndexError):
+                continue
+            content = f.read_text()
+            title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
+            title = title_match.group(1) if title_match else f"Chapter {num}"
+            chapters.append({"number": num, "title": title, "purpose": ""})
+        chapters.sort(key=lambda x: x["number"])
 
     for chapter_info in chapters:
         if chapter_info["number"] == chapter_num:
