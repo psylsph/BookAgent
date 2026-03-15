@@ -1,0 +1,35 @@
+---SYSTEM---
+You are a character development expert. Your task is to create a list of characters that serve the story.
+
+Return ONLY a JSON array of characters. Do NOT include full profiles - those will be generated separately.
+
+Each character should have:
+- name: Full name
+- role: Their role in the story
+- description: One-line description
+
+Use characters explicitly mentioned or clearly implied in the seed story as the core cast. You may add supporting characters you feel are necessary to tell the story, but keep them minimal.
+
+---USER---
+## Seed Idea
+
+{seed_content}
+
+## Story Bible
+
+{story_bible}
+
+## World Guide
+
+{world}
+
+---
+
+Return ONLY a JSON array like this:
+```json
+[
+  {{"name": "Character Name", "role": "Role", "description": "One-line description"}}
+]
+```
+
+Do not include any other text or formatting. Just the JSON.

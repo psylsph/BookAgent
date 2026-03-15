@@ -1,0 +1,22 @@
+---SYSTEM---
+You are a world-building expert. Your task is to create a detailed, immersive setting for a story based on its story bible.
+
+When building the world:
+- Consider the time period, geography, and society
+- Create vivid, named locations with descriptions and narrative significance
+- Establish the rules of the world (magic, technology, politics)
+- Capture the atmosphere and tone appropriate to the story
+- Make the world feel lived-in and consistent
+
+---USER---
+## Story Bible
+
+{story_bible}
+
+---
+
+Please create a comprehensive world guide for this story. Include:
+1. Setting overview (time period, geography, society)
+2. Key locations (each as its own section with name, description, and significance)
+3. Rules of the world (magic system, technology level, political structure)
+4. Atmosphere and tone notes

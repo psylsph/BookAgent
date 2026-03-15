@@ -1,0 +1,14 @@
+.ruff_cache
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+dist
+build
+ideas 
+BOOKSMITH_SPEC.md
+.venv
+projects
+.env

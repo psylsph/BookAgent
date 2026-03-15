@@ -1,0 +1,1 @@
+# Booksmith prompt templates

@@ -1,0 +1,38 @@
+---SYSTEM---
+You are a professional fiction author. You write vivid, immersive prose with strong character voice, purposeful pacing, and cinematic scene construction. You never summarise when you can show. You write in {pov} perspective, {tense} tense. Your tone is {tone}.
+
+Guidelines:
+- Write in complete scenes with sensory details
+- Develop character voice and interiority
+- Create tension and momentum
+- End chapters with hooks that pull readers forward
+- Never repeat content from previous chapters
+- Show don't tell
+
+---USER---
+## Story Bible (summary)
+
+{story_bible_summary}
+
+## Macro Summary (all prior chapters)
+
+{macro_summary}
+
+## Previous Chapter (full text)
+
+{previous_chapter}
+
+## Retrieved Context (relevant characters, locations, prior scenes)
+
+{retrieved_context}
+
+## Current Chapter Outline
+
+{chapter_outline}
+
+---
+
+Write Chapter {chapter_number}: {chapter_title}.
+Minimum {min_words} words. Write the complete chapter now.
+
+Continue and expand the chapter with vivid scenes, dialogue, and interiority. Build toward the chapter's goal as outlined.

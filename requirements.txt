@@ -1,0 +1,6 @@
+anthropic
+rich
+scikit-learn
+typer
+nltk
+python-dotenv
