@@ -10,6 +10,7 @@ def extract_score(review_text: str) -> Optional[float]:
     """Extract quality score from review text."""
     patterns = [
         r"(\d+(?:\.\d+)?)\s*/\s*10",
+        r"(\d+(?:\.\d+)?)\s+out\s+of\s+10",
         r"score[:\s]*(\d+(?:\.\d+)?)",
         r"rating[:\s]*(\d+(?:\.\d+)?)",
         r"quality[:\s]*(\d+(?:\.\d+)?)",
@@ -34,7 +35,11 @@ def generate_review(
     console.print_header(f"Generating review for Chapter {chapter_num}...")
 
     chapter_outline = project.get_chapter_outline(chapter_num)
-    chapter_draft = project.read_file(f"chapters/chapter_{chapter_num}_draft.md")
+    # Try draft first, fall back to final version
+    try:
+        chapter_draft = project.read_file(f"chapters/chapter_{chapter_num}_draft.md")
+    except FileNotFoundError:
+        chapter_draft = project.read_file(f"chapters/chapter_{chapter_num}.md")
 
     characters = project.get_characters()
     character_profiles = []

@@ -77,10 +77,10 @@ def ask_chapter_approval(prompt: str = "What would you like to do?") -> str:
     """Ask for chapter approval with [A]pprove / [R]egenerate / [F]eedback / [E]dit / [S]kip options."""
     choice = Prompt.ask(
         f"{prompt} [[A]pprove/[R]egenerate/[F]eedback/[E]dit/[S]kip]",
-        choices=["A", "R", "F", "E", "S"],
+        choices=["A", "R", "F", "E", "S", "a", "r", "f", "e", "s"],
         default="A",
     )
-    return choice
+    return choice.upper() if choice else "A"
 
 
 def ask_choice(prompt: str, choices: list[str], default: Optional[str] = None) -> str:

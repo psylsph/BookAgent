@@ -50,8 +50,8 @@ MODEL_PROVIDER_MAP = {
     "world_builder": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
     "characters": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
     "chapter_outliner": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "chapter_writer": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "reviewer": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
+    "chapter_writer": ("remote", ANTHROPIC_REMOTE_MODEL, ANTHROPIC_REMOTE_CONTEXT),
+    "reviewer": ("remote", ANTHROPIC_REMOTE_MODEL, ANTHROPIC_LOCAL_CONTEXT),
     "outline_reviewer": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
     "macro_summary": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
 }

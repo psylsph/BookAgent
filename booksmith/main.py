@@ -6,6 +6,7 @@ from typing import Optional
 import typer
 
 from .api_client import APIClient, DEFAULT_MIN_WORDS
+from .export import epub as epub_exporter
 from .storage.project import Project, find_project, list_projects
 from .ui.console import (
     console,
@@ -126,16 +127,40 @@ def resume(
 
     display_project_status(project)
 
-    status = project.status
-
-    if project.current_chapter > 0:
+    # Check which stages are complete and skip to the right place
+    if (
+        project.current_chapter > 0
+        and project.current_chapter <= project.total_chapters
+    ):
         next_chapter = project.current_chapter + 1
         if next_chapter <= project.total_chapters:
+            console.print(f"[green]Skipping to Chapter {next_chapter}...[/green]")
             run_chapter_loop(project, client, next_chapter)
         else:
             print_success("All chapters complete!")
+    elif project.file_exists("chapters") and any(
+        Path(project.path / "chapters").glob("chapter_*.md")
+    ):
+        # Check if there are approved chapters
+        approved = project.approved_chapters
+        if approved:
+            next_chapter = max(approved) + 1
+            if next_chapter <= project.total_chapters:
+                console.print(f"[green]Skipping to Chapter {next_chapter}...[/green]")
+                run_chapter_loop(project, client, next_chapter)
+            else:
+                print_success("All chapters complete!")
+        else:
+            # No approved chapters yet, start chapter writing
+            run_chapters_phase(project, client)
+    elif project.file_exists("characters/character_index.json"):
+        console.print("[green]Skipping to Chapter Outlines...[/green]")
+        run_chapters_phase(project, client)
+    elif project.file_exists("world.md"):
+        console.print("[green]Skipping to Characters...[/green]")
+        run_characters_phase(project, client)
     elif project.file_exists("story_bible.md"):
-        print_success("Resuming from where we left off.")
+        console.print("[green]Skipping to World Building...[/green]")
         run_world_phase(project, client)
     else:
         run_story_bible_phase(project, client)
@@ -539,9 +564,11 @@ def run_chapter_loop(project: Project, client: APIClient, chapter_num: int):
             chapter_writer.regenerate_chapter(project, client, chapter_num, feedback)
             run_chapter_loop(project, client, chapter_num)
         elif choice == "E":
-            edit_in_editor(
-                str(project.path / "chapters" / f"chapter_{chapter_num}_draft.md")
-            )
+            # Edit draft if exists, otherwise edit final version
+            draft_path = project.path / "chapters" / f"chapter_{chapter_num}_draft.md"
+            final_path = project.path / "chapters" / f"chapter_{chapter_num}.md"
+            edit_path = draft_path if draft_path.exists() else final_path
+            edit_in_editor(str(edit_path))
             approve_chapter(project, client, chapter_num)
         elif choice == "S":
             print(f"Skipping chapter {chapter_num}...")
@@ -656,7 +683,7 @@ def chapter(
 @app.command()
 def export(
     name: str = typer.Argument(..., help="Project name"),
-    format: str = typer.Option("md", "--format", help="Export format (md)"),
+    format: str = typer.Option("md", "--format", help="Export format (md, epub)"),
 ):
     """Export the full manuscript."""
     try:
@@ -670,6 +697,13 @@ def export(
         print_error("No approved chapters to export.")
         return
 
+    if format == "epub":
+        print_header("Exporting to EPUB...")
+        output_path = epub_exporter.create_epub(project)
+        print_success(f"EPUB exported to: {output_path}")
+        return
+
+    # Default: markdown export
     manuscript = f"# {project.title}\n\n"
 
     total_words = 0

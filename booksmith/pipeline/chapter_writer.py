@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 from typing import Generator, Optional
 
 from ..api_client import APIClient, format_prompt
@@ -19,71 +18,6 @@ MAX_WORD_COUNT_RETRIES = 3
 def count_words(text: str) -> int:
     """Count words in text."""
     return len(text.split())
-
-
-def parse_scenes_from_outline(outline: str) -> list[str]:
-    """Parse scene breakdown from outline."""
-    scenes = []
-    in_scenes = False
-    current_scene = []
-
-    for line in outline.split("\n"):
-        if "Scene Breakdown" in line or "scene breakdown" in line:
-            in_scenes = True
-            continue
-        if in_scenes:
-            # Check for numbered scene (1., 2., etc.)
-            if re.match(r"^\d+\.\s+", line) or re.match(r"^-\s+", line):
-                if current_scene:
-                    scenes.append("\n".join(current_scene))
-                current_scene = [line]
-            elif line.strip() == "" or line.startswith("**"):
-                if current_scene:
-                    scenes.append("\n".join(current_scene))
-                    current_scene = []
-            elif current_scene:
-                current_scene.append(line)
-
-    if current_scene:
-        scenes.append("\n".join(current_scene))
-
-    return scenes
-
-
-def write_scene(
-    client: APIClient,
-    scene_description: str,
-    context: dict,
-    previous_scene_content: str = "",
-) -> str:
-    """Write a single scene."""
-    prompt = f"""## Scene Description
-
-{scene_description}
-
-## Story Context
-
-{context["chapter_outline"]}
-
-## Previous Scene (for continuity)
-
-{previous_scene_content}
-
-## Instructions
-
-Write this scene in vivid prose. Continue directly from where the previous scene left off. Include dialogue, sensory details, and character interiority.
-"""
-
-    scene_content = ""
-    for chunk in client.stream(
-        stage="chapter_writer",
-        system="You are a professional fiction author. Output ONLY the story scene, no thinking.",
-        user_message=prompt,
-        project_config=context.get("project_config", {}),
-    ):
-        scene_content += chunk
-
-    return scene_content
 
 
 def summarize_text(text: str, max_words: int = 500) -> str:
@@ -110,6 +44,8 @@ def build_chapter_context(
     if chapter_num > 1:
         try:
             previous_chapter = project.get_approved_chapter(chapter_num - 1)
+            if previous_chapter:
+                previous_chapter = summarize_text(previous_chapter, 750)
         except FileNotFoundError:
             previous_chapter = None
 
@@ -146,7 +82,7 @@ def generate_chapter(
     chapter_num: int,
     extra_feedback: Optional[str] = None,
 ) -> str:
-    """Generate a chapter by writing scenes one at a time."""
+    """Generate a chapter with context and word count enforcement."""
     print_header(f"Generating Chapter {chapter_num}...")
 
     chapter_outline = project.get_chapter_outline(chapter_num)
@@ -154,30 +90,82 @@ def generate_chapter(
         raise ValueError(f"No outline found for chapter {chapter_num}")
 
     context = build_chapter_context(project, chapter_num, chapter_outline)
-    context["project_config"] = project.config
 
-    # Parse scenes from outline
-    scenes = parse_scenes_from_outline(chapter_outline)
+    # Build full prompt with all context
+    user_message = f"""## Story Bible (summary)
 
-    if not scenes:
-        # Fallback to single scene if no breakdown found
-        scenes = [chapter_outline]
+{context["story_bible_summary"]}
 
-    console.print(f"[cyan]Writing {len(scenes)} scenes...[/cyan]")
+## Macro Summary (all prior chapters)
 
-    # Write each scene
-    chapter_content = ""
-    previous_scene = ""
+{context["macro_summary"]}
 
-    for i, scene in enumerate(scenes):
-        console.print(f"[cyan]Writing scene {i + 1}/{len(scenes)}...[/cyan]")
-        scene_content = write_scene(client, scene, context, previous_scene)
-        chapter_content += scene_content + "\n\n"
-        previous_scene = (
-            scene_content[-500:] if len(scene_content) > 500 else scene_content
-        )
+## Previous Chapter Summary
 
-    # Get word count and expand if needed
+{context["previous_chapter"]}
+
+## Retrieved Context (relevant characters, locations, prior scenes)
+
+{context["retrieved_context"]}
+
+## Current Chapter Outline
+
+{context["chapter_outline"]}
+
+---
+
+Write Chapter {context["chapter_number"]}: {context["chapter_title"]}.
+
+Focus on quality and tightness. Include only the scenes needed to fulfill the chapter purpose. Do NOT add filler to hit word counts."""
+
+    # If there's feedback (from AI review), rewrite with the feedback instead
+    if extra_feedback:
+        # First get current chapter text from draft
+        draft_path = f"chapters/chapter_{chapter_num}_draft.md"
+        try:
+            current_text = project.read_file(draft_path)
+        except FileNotFoundError:
+            current_text = ""
+
+        console.print("[cyan]Rewriting chapter with AI feedback...[/cyan]")
+
+        rewrite_prompt = f"""## Current Chapter Text
+
+{current_text}
+
+## AI Review Comments to Address
+
+{extra_feedback}
+
+## Instructions
+
+Rewrite the chapter incorporating the AI review comments above. Keep the same chapter outline but address the issues raised in the review. Output ONLY the revised chapter text.
+
+Context:
+- Story Bible: {context["story_bible_summary"]}
+- Previous Chapter: {context["previous_chapter"]}
+- Chapter Outline: {context["chapter_outline"]}
+"""
+
+        chapter_content = ""
+        for chunk in client.stream(
+            stage="chapter_writer",
+            system="You are a professional fiction author. Rewrite the chapter based on feedback.",
+            user_message=rewrite_prompt,
+            project_config=project.config,
+        ):
+            chapter_content += chunk
+    else:
+        # Normal generation
+        chapter_content = ""
+        for chunk in client.stream(
+            stage="chapter_writer",
+            system="You are a professional fiction author. Output ONLY the chapter text. No thinking, no reasoning, just the story.",
+            user_message=user_message,
+            project_config=project.config,
+        ):
+            chapter_content += chunk
+
     word_count = count_words(chapter_content)
     min_words = context["min_words"]
 
@@ -192,7 +180,8 @@ def generate_chapter(
 
         continuation_prompt = (
             f"The chapter is {word_count} words, below the minimum of {min_words}. "
-            f"Continue and expand the chapter. Add more detail, dialogue, and interiority."
+            f"Continue and expand the chapter, picking up from where it ended. "
+            f"Add more scene detail, interiority, and dialogue. Do not repeat content already written."
         )
 
         continuation = ""
@@ -217,6 +206,9 @@ def generate_chapter(
         )
 
     draft_path = f"chapters/chapter_{chapter_num}_draft.md"
+    project.write_file(draft_path, chapter_content)
+
+    return chapter_content
     project.write_file(draft_path, chapter_content)
 
     return chapter_content

@@ -110,7 +110,7 @@ TEMP_REVIEWER=0.3
 | World Builder | local | ANTHROPIC_LOCAL_MODEL | 0.7 |
 | Characters | local | ANTHROPIC_LOCAL_MODEL | 0.7 |
 | Chapter Outliner | local | ANTHROPIC_LOCAL_MODEL | 1.0 |
-| Chapter Writer | local | ANTHROPIC_LOCAL_MODEL | 1.0 |
+| Chapter Writer | remote | ANTHROPIC_REMOTE_MODEL | 1.0 |
 | Reviewer | local | ANTHROPIC_LOCAL_MODEL | 0.3 |
 | Outline Review | local | ANTHROPIC_LOCAL_MODEL | 0.3 |
 | Macro Summary | local | ANTHROPIC_LOCAL_MODEL | 0.3 |

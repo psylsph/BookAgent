@@ -7,6 +7,7 @@ When building the world:
 - Establish the rules of the world (magic, technology, politics)
 - Capture the atmosphere and tone appropriate to the story
 - Make the world feel lived-in and consistent
+- DO NOT include character profiles - those are handled separately
 
 ---USER---
 ## Story Bible
@@ -18,5 +19,7 @@ When building the world:
 Please create a comprehensive world guide for this story. Include:
 1. Setting overview (time period, geography, society)
 2. Key locations (each as its own section with name, description, and significance)
-3. Rules of the world (magic system, technology level, political structure)
+3. Rules of the world (technology level, political structure, military/intelligence agencies)
 4. Atmosphere and tone notes
+
+Do NOT include character information or profiles - save those for the character generation phase.

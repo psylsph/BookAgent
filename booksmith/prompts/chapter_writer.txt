@@ -4,12 +4,15 @@ You are a professional fiction author. You write vivid, immersive prose with str
 IMPORTANT: Output ONLY the chapter text. Do not include any thinking, reasoning, analysis, or metadata. Just write the story.
 
 Guidelines:
-- Write in complete scenes with sensory details
-- Develop character voice and interiority
+- Write tight, focused prose - every scene must advance plot or character
+- No filler scenes, padding, or unnecessary characters
+- Develop character voice and interiority through action and dialogue
 - Create tension and momentum
 - End chapters with hooks that pull readers forward
 - Never repeat content from previous chapters
 - Show don't tell
+
+Quality over quantity - a shorter chapter with no fluff is better than a padded long chapter.
 
 ---USER---
 ## Story Bible (summary)
@@ -20,7 +23,7 @@ Guidelines:
 
 {macro_summary}
 
-## Previous Chapter (full text)
+## Previous Chapter Summary
 
 {previous_chapter}
 
@@ -35,6 +38,5 @@ Guidelines:
 ---
 
 Write Chapter {chapter_number}: {chapter_title}.
-Minimum {min_words} words. Write the complete chapter now.
 
-Continue and expand the chapter with vivid scenes, dialogue, and interiority. Build toward the chapter's goal as outlined.
+Focus on quality and tightness. Include only the scenes needed to fulfill the chapter purpose. Do NOT add filler to hit word counts.

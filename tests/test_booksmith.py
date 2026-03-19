@@ -125,9 +125,9 @@ class TestAPIClient:
         from booksmith.api_client import MODEL_PROVIDER_MAP
 
         assert MODEL_PROVIDER_MAP["story_bible"][0] == "local"
-        assert MODEL_PROVIDER_MAP["chapter_writer"][0] == "local"
+        assert MODEL_PROVIDER_MAP["chapter_writer"][0] == "remote"
         assert MODEL_PROVIDER_MAP["chapter_outliner"][0] == "local"
-        assert MODEL_PROVIDER_MAP["reviewer"][0] == "local"
+        assert MODEL_PROVIDER_MAP["reviewer"][0] == "remote"
         assert MODEL_PROVIDER_MAP["outline_reviewer"][0] == "local"
         assert MODEL_PROVIDER_MAP["macro_summary"][0] == "local"
 
