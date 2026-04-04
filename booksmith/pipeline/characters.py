@@ -71,6 +71,150 @@ def _normalize_character_keys(characters: list[dict]) -> list[dict]:
     return normalized
 
 
+def extract_seed_character_names(seed_content: str) -> list[str]:
+    """Extract character names from seed using heuristics.
+
+    Looks for capitalized words that appear to be proper names,
+    filtering out common non-character words.
+    """
+    import re
+
+    # Find capitalized words that look like names (2+ chars, not at start of sentence)
+    # This catches names that appear mid-sentence after dialogue tags, etc.
+    pattern = r"(?:^|(?<=\.\s)|(?<=!\s)|(?<=\?\s)|(?<=,\s)|(?<=\s))([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*)"
+    candidates = re.findall(pattern, seed_content)
+
+    # Filter out common non-character words
+    common_words = {
+        "The",
+        "This",
+        "That",
+        "When",
+        "Where",
+        "What",
+        "How",
+        "Why",
+        "Chapter",
+        "Scene",
+        "But",
+        "And",
+        "For",
+        "Not",
+        "Now",
+        "Once",
+        "There",
+        "Here",
+        "Then",
+        "After",
+        "Before",
+        "During",
+        "Through",
+        "Above",
+        "Below",
+        "Between",
+        "Under",
+        "Over",
+        "Into",
+        "From",
+        "With",
+        "Without",
+        "Within",
+        "Around",
+        "About",
+        "Against",
+        "Some",
+        "Many",
+        "More",
+        "Most",
+        "Other",
+        "Such",
+        "Only",
+        "Own",
+        "Each",
+        "Every",
+        "Both",
+        "Few",
+        "Much",
+        "Very",
+        "Just",
+        "Also",
+        "All",
+        "Any",
+        "Another",
+        "One",
+        "Two",
+        "Three",
+        "First",
+        "Second",
+        "Last",
+        "Next",
+        "New",
+        "Old",
+        "Good",
+        "Great",
+        "Little",
+        "Long",
+        "High",
+        "Low",
+        "Right",
+        "Left",
+        "Back",
+        "Front",
+        "Top",
+        "Bottom",
+        "World",
+        "Story",
+        "Book",
+        "Time",
+        "Day",
+        "Night",
+        "Year",
+        "Place",
+        "House",
+        "City",
+        "Country",
+        "King",
+        "Queen",
+        "Lord",
+        "Lady",
+        "God",
+        "Gods",
+        "Magic",
+        "Power",
+        "Force",
+        "Light",
+        "Dark",
+        "Love",
+        "Death",
+        "Life",
+        "Hope",
+        "Fear",
+        "Truth",
+        "Lie",
+    }
+
+    # Also filter single words that are clearly not names
+    names = []
+    for candidate in candidates:
+        # Keep multi-word names (likely full names)
+        if " " in candidate:
+            names.append(candidate)
+        else:
+            # Single words: only keep if not in common words
+            if candidate not in common_words:
+                names.append(candidate)
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique_names = []
+    for name in names:
+        if name.lower() not in seen:
+            seen.add(name.lower())
+            unique_names.append(name)
+
+    return unique_names
+
+
 def generate_character_list(
     project: Project,
     client: APIClient,
@@ -82,11 +226,15 @@ def generate_character_list(
     world = project.read_file("world.md")
     seed_content = project.read_file(project.seed_file)
 
+    # Extract character names from seed to ensure none are missed
+    seed_names = extract_seed_character_names(seed_content)
+
     system_prompt, user_prompt = format_prompt(
         "characters",
         seed_content=seed_content,
         story_bible=story_bible,
         world=world,
+        seed_character_names=", ".join(seed_names) if seed_names else "(none detected)",
     )
 
     response = client.generate(

@@ -2,40 +2,50 @@ import re
 from pathlib import Path
 from typing import Generator, Optional
 
-from ..api_client import APIClient, format_prompt
+from ..api_client import APIClient, DEFAULT_MIN_WORDS, format_prompt
 from ..storage.project import Project
-from ..ui import console
+from ..ui.console import console, print_header
+
+CHAPTER_TARGET_WORDS = 1750
 
 
-def extract_chapter_count(story_bible: str) -> int:
-    """Extract suggested chapter count from story bible."""
-    # Try exact match first
-    exact_match = re.search(
-        r"(\d+)\s*chapters?(?!\s*-\s*\d+)", story_bible, re.IGNORECASE
+def extract_word_count(story_bible: str) -> int:
+    """Extract estimated total word count from story bible."""
+    # Try "**Estimated Word Count** - 50000" format
+    est_match = re.search(
+        r"\*\*Estimated Word Count\*\*\s*[-–—]?\s*([\d,]+)", story_bible, re.IGNORECASE
     )
-    if exact_match:
-        return int(exact_match.group(1))
+    if est_match:
+        return int(est_match.group(1).replace(",", ""))
 
-    # Try chapter count line
-    count_match = re.search(r"chapter\s*count[:\s=]+(\d+)", story_bible, re.IGNORECASE)
-    if count_match:
-        return int(count_match.group(1))
-
-    # Try approximately X chapters
-    approx_match = re.search(
-        r"approximately\s+(\d+)\s*chapters?", story_bible, re.IGNORECASE
+    # Try "Estimated Word Count: 50000" format
+    est_match2 = re.search(
+        r"estimated\s+word\s+count\s*[:=]\s*([\d,]+)", story_bible, re.IGNORECASE
     )
-    if approx_match:
-        return int(approx_match.group(1))
+    if est_match2:
+        return int(est_match2.group(1).replace(",", ""))
 
-    # Try range like "40-50 chapters" - use lower bound
-    range_match = re.search(
-        r"(\d+)\s*-\s*(\d+)\s*chapters?", story_bible, re.IGNORECASE
-    )
-    if range_match:
-        return int(range_match.group(1))
+    # Try "50,000 words" or "50000 words"
+    words_match = re.search(r"([\d,]+)\s*words?", story_bible, re.IGNORECASE)
+    if words_match:
+        return int(words_match.group(1).replace(",", ""))
 
-    return 24
+    return 0
+
+
+def calculate_chapter_count(
+    total_words: int, min_words: int = DEFAULT_MIN_WORDS
+) -> int:
+    """Calculate chapter count from total word count.
+
+    Chapters are targeted at ~1750 words. Returns enough chapters to
+    cover the total word count, clamped to a minimum of 8.
+    """
+    if total_words <= 0:
+        return 24
+
+    count = max(8, round(total_words / CHAPTER_TARGET_WORDS))
+    return count
 
 
 def generate_story_bible(
@@ -44,7 +54,7 @@ def generate_story_bible(
     extra_instruction: Optional[str] = None,
 ) -> str:
     """Generate story bible from seed file."""
-    console.print_header("Generating Story Bible...")
+    print_header("Generating Story Bible...")
 
     seed_content = project.read_file(project.seed_file)
 
@@ -69,8 +79,14 @@ def generate_story_bible(
 
     project.write_file("story_bible.md", content)
 
-    chapter_count = extract_chapter_count(content)
+    total_words = extract_word_count(content)
+    chapter_count = calculate_chapter_count(total_words)
     project.set_total_chapters(chapter_count)
+
+    if total_words > 0:
+        console.print(
+            f"[dim]Estimated total: {total_words:,} words → {chapter_count} chapters[/dim]"
+        )
 
     return content
 

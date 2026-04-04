@@ -8,12 +8,28 @@ from ..ui import console
 
 def extract_score(review_text: str) -> Optional[float]:
     """Extract quality score from review text."""
+    word_to_num = {
+        "zero": 0,
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+    }
+
     patterns = [
         r"(\d+(?:\.\d+)?)\s*/\s*10",
         r"(\d+(?:\.\d+)?)\s+out\s+of\s+10",
         r"score[:\s]*(\d+(?:\.\d+)?)",
         r"rating[:\s]*(\d+(?:\.\d+)?)",
         r"quality[:\s]*(\d+(?:\.\d+)?)",
+        r"overall[:\s]*(\d+(?:\.\d+)?)",
+        r"final\s+score[:\s]*(\d+(?:\.\d+)?)",
     ]
 
     for pattern in patterns:
@@ -22,6 +38,11 @@ def extract_score(review_text: str) -> Optional[float]:
             score = float(match.group(1))
             if 0 <= score <= 10:
                 return score
+
+    for word, num in word_to_num.items():
+        pattern = rf"\b{word}\s+out\s+of\s+10\b"
+        if re.search(pattern, review_text, re.IGNORECASE):
+            return float(num)
 
     return None
 
@@ -76,7 +97,7 @@ def generate_review(
     ):
         review += chunk
 
-    score = extract_score(review) or 5.0
+    score = extract_score(review) or 6.0
 
     review_file = f"reviews/chapter_{chapter_num}_review.md"
     project.write_file(review_file, review)
@@ -90,7 +111,7 @@ def get_review(
     """Get existing review or generate new one."""
     try:
         review = project.read_file(f"reviews/chapter_{chapter_num}_review.md")
-        score = extract_score(review) or 5.0
+        score = extract_score(review) or 6.0
         return review, score
     except FileNotFoundError:
         return None, None
@@ -157,7 +178,7 @@ Provide a score 0-10 and specific feedback. Focus on structural improvements, no
     ):
         review += chunk
 
-    score = extract_score(review) or 5.0
+    score = extract_score(review) or 6.0
 
     review_file = f"reviews/chapter_{chapter_num}_outline_review.md"
     project.write_file(review_file, review)

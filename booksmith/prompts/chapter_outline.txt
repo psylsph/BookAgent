@@ -1,9 +1,10 @@
 ---SYSTEM---
-You are a plot architect. Create ONLY a chapter list.
+You are a plot architect. Create a chapter-by-chapter list for a book.
 
 OUTPUT REQUIREMENTS:
-- A simple table with columns: Chapter #, Title, Purpose
-- One row per chapter
+- A table with columns: Chapter #, Title, Purpose
+- Exactly one row per chapter — NOT acts, parts, or sections
+- Each row represents a single chapter with a specific scene or event
 - No detailed outlines, no scene breakdowns, no prose
 - Just the list
 
@@ -37,6 +38,8 @@ Example format:
 
 ---
 
-Create a chapter list with exactly {total_chapters} chapters. One sentence per purpose.
+Create a chapter list with approximately {total_chapters} chapters. Each row is ONE chapter. One sentence per purpose.
 
-IMPORTANT: Only output the table. No explanations, no detailed content.
+Target: ~1,750 words per chapter.
+
+IMPORTANT: Only output the table. No explanations, no act groupings, no detailed content.

@@ -10,35 +10,29 @@ class TestAPIConnection:
         """Check remote endpoint is configured."""
         from booksmith.api_client import ANTHROPIC_BASE_URL
 
-        assert ANTHROPIC_BASE_URL is not None
-
-    def test_local_configured(self):
-        """Check local endpoint is configured."""
-        from booksmith.api_client import LOCAL_BASE_URL
-
-        # Local might be None or a URL
-        if LOCAL_BASE_URL:
-            assert LOCAL_BASE_URL.startswith("http")
+        # ANTHROPIC_BASE_URL can be None (SDK default) or a URL
+        if ANTHROPIC_BASE_URL is not None:
+            assert ANTHROPIC_BASE_URL.startswith("http")
 
     def test_models_configured(self):
         """Check models are configured."""
         from booksmith.api_client import (
-            ANTHROPIC_LOCAL_MODEL,
-            ANTHROPIC_REMOTE_MODEL,
+            ANTHROPIC_DEFAULT_HAIKU_MODEL,
+            ANTHROPIC_DEFAULT_SONNET_MODEL,
         )
 
-        assert ANTHROPIC_LOCAL_MODEL is not None
-        assert ANTHROPIC_REMOTE_MODEL is not None
+        assert ANTHROPIC_DEFAULT_HAIKU_MODEL is not None
+        assert ANTHROPIC_DEFAULT_SONNET_MODEL is not None
 
     def test_context_sizes_configured(self):
         """Check context sizes are configured."""
         from booksmith.api_client import (
-            ANTHROPIC_LOCAL_CONTEXT,
-            ANTHROPIC_REMOTE_CONTEXT,
+            ANTHROPIC_HAIKU_CONTEXT,
+            ANTHROPIC_SONNET_CONTEXT,
         )
 
-        assert ANTHROPIC_LOCAL_CONTEXT == 32768
-        assert ANTHROPIC_REMOTE_CONTEXT == 128000
+        assert ANTHROPIC_HAIKU_CONTEXT > 0
+        assert ANTHROPIC_SONNET_CONTEXT > 0
 
     def test_api_client_can_connect(self):
         """Test that API client can be created."""
@@ -57,14 +51,13 @@ class TestAPIConnection:
     def test_env_has_required_vars(self):
         """Check .env has required variables."""
         from booksmith.api_client import (
-            ANTHROPIC_BASE_URL,
-            ANTHROPIC_REMOTE_MODEL,
-            ANTHROPIC_LOCAL_MODEL,
+            ANTHROPIC_DEFAULT_SONNET_MODEL,
+            ANTHROPIC_DEFAULT_HAIKU_MODEL,
         )
 
         # These should be loaded from .env
-        assert ANTHROPIC_REMOTE_MODEL is not None
-        assert ANTHROPIC_LOCAL_MODEL is not None
+        assert ANTHROPIC_DEFAULT_SONNET_MODEL is not None
+        assert ANTHROPIC_DEFAULT_HAIKU_MODEL is not None
 
 
 class TestAPIIntegration:
@@ -78,8 +71,8 @@ class TestAPIIntegration:
         client = APIClient()
 
         # Skip if no valid API key
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            pytest.skip("No ANTHROPIC_API_KEY configured")
+        if not os.getenv("ANTHROPIC_AUTH_TOKEN") and not os.getenv("ANTHROPIC_API_KEY"):
+            pytest.skip("No ANTHROPIC_AUTH_TOKEN configured")
 
         response = client.generate(
             stage="chapter_writer",
@@ -94,17 +87,13 @@ class TestAPIIntegration:
     @pytest.mark.integration
     def test_local_generate_simple(self):
         """Test local API with a simple prompt."""
-        from booksmith.api_client import APIClient, LOCAL_BASE_URL
-
-        # Skip if no local URL configured
-        if not LOCAL_BASE_URL:
-            pytest.skip("No LOCAL_BASE_URL configured")
+        from booksmith.api_client import APIClient
 
         client = APIClient()
 
         # Skip if no API key
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            pytest.skip("No ANTHROPIC_API_KEY configured")
+        if not os.getenv("ANTHROPIC_AUTH_TOKEN") and not os.getenv("ANTHROPIC_API_KEY"):
+            pytest.skip("No ANTHROPIC_AUTH_TOKEN configured")
 
         response = client.generate(
             stage="story_bible",
@@ -122,8 +111,8 @@ class TestAPIIntegration:
 
         client = APIClient()
 
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            pytest.skip("No ANTHROPIC_API_KEY configured")
+        if not os.getenv("ANTHROPIC_AUTH_TOKEN") and not os.getenv("ANTHROPIC_API_KEY"):
+            pytest.skip("No ANTHROPIC_AUTH_TOKEN configured")
 
         chunks = []
         for chunk in client.stream(

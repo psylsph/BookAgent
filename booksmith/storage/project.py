@@ -4,11 +4,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from booksmith.api_client import ANTHROPIC_LOCAL_MODEL, DEFAULT_MIN_WORDS
+from booksmith.api_client import ANTHROPIC_DEFAULT_HAIKU_MODEL, DEFAULT_MIN_WORDS
 
 DEFAULT_CONFIG = {
     "min_words_per_chapter": DEFAULT_MIN_WORDS,
-    "model": ANTHROPIC_LOCAL_MODEL,
+    "model": ANTHROPIC_DEFAULT_HAIKU_MODEL,
     "pov": "third person limited",
     "tense": "past",
     "tone": "literary",
@@ -45,6 +45,10 @@ class Project:
     @property
     def approved_chapters(self) -> list[int]:
         return self.config.get("approved_chapters", [])
+
+    @property
+    def approved_outlines(self) -> list[int]:
+        return self.config.get("approved_outlines", [])
 
     @property
     def seed_file(self) -> str:
@@ -123,6 +127,20 @@ class Project:
                 config.setdefault("approved_chapters", []).append(chapter_num)
 
         config["current_chapter"] = chapter_num
+        self.save_config(config)
+
+    def update_outline_status(self, chapter_num: int, approved: bool = False):
+        """Update outline approval status for a chapter."""
+        config = self.load_config()
+
+        if approved:
+            if chapter_num not in config.get("approved_outlines", []):
+                config.setdefault("approved_outlines", []).append(chapter_num)
+        else:
+            config["approved_outlines"] = [
+                c for c in config.get("approved_outlines", []) if c != chapter_num
+            ]
+
         self.save_config(config)
 
     def set_total_chapters(self, count: int):

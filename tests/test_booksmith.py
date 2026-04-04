@@ -243,17 +243,17 @@ class TestWorkflow:
 class TestAPIConfig:
     def test_loads_from_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://test.zenmux.ai")
-        monkeypatch.setenv("LOCAL_BASE_URL", "http://localhost:9999")
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-token")
 
         import importlib
         import booksmith.api_client
 
         importlib.reload(booksmith.api_client)
 
-        from booksmith.api_client import ANTHROPIC_BASE_URL, LOCAL_BASE_URL
+        from booksmith.api_client import ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN
 
         assert ANTHROPIC_BASE_URL == "https://test.zenmux.ai"
-        assert LOCAL_BASE_URL == "http://localhost:9999"
+        assert ANTHROPIC_AUTH_TOKEN == "test-token"
 
 
 if __name__ == "__main__":
@@ -544,4 +544,17 @@ class TestProjectAdvanced:
 
         project = Project.create("test_book", seed_file, projects_dir)
 
+        assert project.total_chapters == 0
+        assert project.approved_outlines == []
+
+        project.set_total_chapters(24)
         assert project.total_chapters == 24
+
+        project.update_outline_status(1, approved=True)
+        assert project.approved_outlines == [1]
+
+        project.update_outline_status(2, approved=True)
+        assert project.approved_outlines == [1, 2]
+
+        project.update_outline_status(1, approved=False)
+        assert project.approved_outlines == [2]

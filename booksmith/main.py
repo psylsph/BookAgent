@@ -125,6 +125,21 @@ def resume(
 
     client = APIClient()
 
+    # Update total_chapters_planned from chapter_list.md if it's 0
+    if project.total_chapters == 0:
+        chapter_list_path = project.path / "chapter_outlines" / "chapter_list.md"
+        if chapter_list_path.exists():
+            try:
+                content = chapter_list_path.read_text()
+                chapters = chapter_outliner.parse_chapter_list(content)
+                if chapters:
+                    project.set_total_chapters(len(chapters))
+                    console.print(
+                        f"[dim]Updated total_chapters_planned to {len(chapters)} from chapter list[/dim]"
+                    )
+            except Exception:
+                pass
+
     display_project_status(project)
 
     # Check which stages are complete and skip to the right place
@@ -153,7 +168,76 @@ def resume(
         else:
             # No approved chapters yet, start chapter writing
             run_chapters_phase(project, client)
-    elif project.file_exists("characters/character_index.json"):
+        return
+    # Check for existing chapter outlines to resume from the right chapter
+    outlines_dir = project.path / "chapter_outlines"
+    chapter_list_path = project.path / "chapter_outlines" / "chapter_list.md"
+
+    if chapter_list_path.exists():
+        try:
+            content = chapter_list_path.read_text()
+            chapters = chapter_outliner.parse_chapter_list(content)
+            if chapters:
+                # Find the next chapter that needs outline review
+                approved_outlines = project.approved_outlines
+                next_chapter = 1
+                for ch in chapters:
+                    if ch["number"] not in approved_outlines:
+                        next_chapter = ch["number"]
+                        break
+                else:
+                    # All outlines approved
+                    next_chapter = len(chapters) + 1
+
+                if next_chapter <= len(chapters):
+                    console.print(
+                        f"[green]Resuming outline review from Chapter {next_chapter} "
+                        f"({len(approved_outlines)}/{len(chapters)} approved)...[/green]"
+                    )
+                    review_chapter_outlines(project, client, chapters, next_chapter)
+                    return
+                else:
+                    console.print("[green]All chapter outlines complete![/green]")
+                    run_chapter_loop(project, client, 1)
+                    return
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Could not parse chapter list: {e}[/yellow]"
+            )
+
+    # Fallback: check for existing outline files
+    if outlines_dir.exists():
+        existing_outlines = sorted(
+            [
+                int(f.stem.split("_")[1])
+                for f in outlines_dir.glob("chapter_*.md")
+                if f.stem.split("_")[1].isdigit()
+            ],
+            reverse=True,
+        )
+        if existing_outlines:
+            last_outline = existing_outlines[0]
+            next_chapter = last_outline + 1
+            console.print(
+                f"[yellow]Found {len(existing_outlines)} outline files (approval status unknown). "
+                f"Starting review from Chapter {next_chapter}...[/yellow]"
+            )
+            # Load chapter list for review_chapter_outlines
+            if chapter_list_path.exists():
+                try:
+                    content = chapter_list_path.read_text()
+                    chapters = chapter_outliner.parse_chapter_list(content)
+                    if next_chapter <= len(chapters):
+                        review_chapter_outlines(project, client, chapters, next_chapter)
+                        return
+                except Exception:
+                    pass
+
+            console.print("[green]All chapter outlines complete![/green]")
+            run_chapter_loop(project, client, 1)
+            return
+
+    if project.file_exists("characters/character_index.json"):
         console.print("[green]Skipping to Chapter Outlines...[/green]")
         run_chapters_phase(project, client)
     elif project.file_exists("world.md"):
@@ -431,6 +515,14 @@ def review_chapter_outlines(
         run_chapter_loop(project, client, first_chapter)
         return
 
+    # Skip if outline was already approved
+    if chapter_num in project.approved_outlines:
+        console.print(
+            f"[dim]Chapter {chapter_num} outline already approved. Skipping...[/dim]"
+        )
+        review_chapter_outlines(project, client, chapters, chapter_num + 1)
+        return
+
     chapter = chapters[chapter_num - 1]
     outline_path = project.path / "chapter_outlines" / f"chapter_{chapter['number']}.md"
 
@@ -482,10 +574,18 @@ def review_chapter_outlines(
 
         # In yolo mode, regenerate with AI feedback then continue
         if get_yolo_mode():
-            console.print("[yellow]YOLO: Regenerating with AI feedback...[/yellow]")
-            chapter_outliner.regenerate_chapter_outline(
-                project, client, chapter["number"], feedback=review_text
+            console.print(
+                "[yellow]YOLO: Regenerating outline with AI feedback...[/yellow]"
             )
+            chapter_outliner.regenerate_chapter_outline(
+                project,
+                client,
+                chapter["number"],
+                feedback=review_text,
+            )
+            # Mark as approved after regeneration in YOLO mode
+            project.update_outline_status(chapter["number"], approved=True)
+            console.print("[yellow]YOLO: Auto-continuing to next chapter...[/yellow]")
             review_chapter_outlines(project, client, chapters, chapter_num + 1)
         else:
             review_choice = ask_choice(
@@ -496,23 +596,35 @@ def review_chapter_outlines(
             if review_choice == "R":
                 # Regenerate outline with AI feedback
                 chapter_outliner.regenerate_chapter_outline(
-                    project, client, chapter["number"], feedback=review_text
+                    project,
+                    client,
+                    chapter["number"],
+                    feedback=review_text,
                 )
+                # Mark as not approved since we're regenerating
+                project.update_outline_status(chapter["number"], approved=False)
                 review_chapter_outlines(project, client, chapters, chapter_num)
             else:
-                # Continue without changes
+                # Continue without changes - mark as approved
+                project.update_outline_status(chapter["number"], approved=True)
                 review_chapter_outlines(project, client, chapters, chapter_num + 1)
     elif choice == "R":
         chapter_outliner.regenerate_chapter_outline(project, client, chapter["number"])
+        # Mark as not approved since we're regenerating
+        project.update_outline_status(chapter["number"], approved=False)
         review_chapter_outlines(project, client, chapters, chapter_num)
     elif choice == "F":
         feedback = console.input("What would you like to change? ").strip()
         chapter_outliner.regenerate_chapter_outline(
             project, client, chapter["number"], feedback
         )
+        # Mark as not approved since we're regenerating
+        project.update_outline_status(chapter["number"], approved=False)
         review_chapter_outlines(project, client, chapters, chapter_num)
     elif choice == "E":
         edit_in_editor(str(outline_path))
+        # Mark as approved after edit
+        project.update_outline_status(chapter["number"], approved=True)
         review_chapter_outlines(project, client, chapters, chapter_num)
     elif choice == "S":
         review_chapter_outlines(project, client, chapters, chapter_num + 1)
@@ -526,53 +638,126 @@ def run_chapter_loop(project: Project, client: APIClient, chapter_num: int):
 
     print_header(f"Chapter {chapter_num}")
 
-    chapter_content = chapter_writer.generate_chapter(project, client, chapter_num)
-    word_count = count_words(chapter_content)
-
-    review_text, score = reviewer.generate_review(project, client, chapter_num)
-
-    print_panel(
-        review_text, title=f"AI Review (Score: {score}/10)", border_style="yellow"
-    )
-
-    if score < 7:
-        print_error(f"Low score! Consider regenerating before approving.")
-
-    console.print(f"\n[cyan]Word count: {word_count}[/cyan]")
-    if word_count >= project.config.get("min_words_per_chapter", 2000):
-        print_success("Meets minimum word count.")
-    else:
-        print_error("Below minimum word count.")
-
-    # In yolo mode, regenerate with AI feedback instead of auto-approving
-    if get_yolo_mode():
-        console.print("[yellow]YOLO: Regenerating with AI feedback...[/yellow]")
-        chapter_writer.regenerate_chapter(
-            project, client, chapter_num, feedback=review_text
+    # Check if outline exists, generate if missing
+    chapter_outline = project.get_chapter_outline(chapter_num)
+    if not chapter_outline:
+        console.print(
+            f"[yellow]No outline found for Chapter {chapter_num}. Generating...[/yellow]"
         )
-        run_chapter_loop(project, client, chapter_num)
-    else:
-        choice = ask_chapter_approval("Chapter")
+        # Load chapter list to get chapter info
+        chapter_list_path = project.path / "chapter_outlines" / "chapter_list.md"
+        if chapter_list_path.exists():
+            try:
+                content = chapter_list_path.read_text()
+                chapters = chapter_outliner.parse_chapter_list(content)
+                chapter_info = None
+                for ch in chapters:
+                    if ch["number"] == chapter_num:
+                        chapter_info = ch
+                        break
+                if chapter_info:
+                    chapter_outliner.generate_chapter_outline(
+                        project, client, chapter_info, chapters
+                    )
+                    console.print(
+                        f"[green]Generated outline for Chapter {chapter_num}[/green]"
+                    )
+                else:
+                    print_error(f"Chapter {chapter_num} not found in chapter list")
+                    return
+            except Exception as e:
+                print_error(f"Failed to generate outline: {e}")
+                return
+        else:
+            print_error(
+                "No chapter list found. Please generate chapter outlines first."
+            )
+            return
 
-        if choice == "A":
-            approve_chapter(project, client, chapter_num)
-        elif choice == "R":
-            chapter_writer.regenerate_chapter(project, client, chapter_num)
-            run_chapter_loop(project, client, chapter_num)
-        elif choice == "F":
-            feedback = console.input("Enter feedback: ").strip()
-            chapter_writer.regenerate_chapter(project, client, chapter_num, feedback)
-            run_chapter_loop(project, client, chapter_num)
-        elif choice == "E":
-            # Edit draft if exists, otherwise edit final version
-            draft_path = project.path / "chapters" / f"chapter_{chapter_num}_draft.md"
-            final_path = project.path / "chapters" / f"chapter_{chapter_num}.md"
-            edit_path = draft_path if draft_path.exists() else final_path
-            edit_in_editor(str(edit_path))
-            approve_chapter(project, client, chapter_num)
-        elif choice == "S":
-            print(f"Skipping chapter {chapter_num}...")
-            run_chapter_loop(project, client, chapter_num + 1)
+    # Three-pass generation: generate → review → regenerate → review → regenerate → approve
+    review_text = None
+    score = None
+
+    for pass_num in range(1, 4):
+        print_header(f"Chapter {chapter_num} — Pass {pass_num}/3")
+
+        if pass_num == 1:
+            chapter_content = chapter_writer.generate_chapter(
+                project, client, chapter_num
+            )
+        else:
+            chapter_content = chapter_writer.regenerate_chapter(
+                project, client, chapter_num, review_text
+            )
+
+        word_count = count_words(chapter_content)
+
+        review_text, score = reviewer.generate_review(project, client, chapter_num)
+
+        # Append code-based word count to review feedback
+        min_words = project.config.get("min_words_per_chapter", 1500)
+        word_count_note = (
+            f"\n\n**Word Count:** {word_count} words (target: {min_words})"
+        )
+        if word_count < min_words:
+            word_count_note += " — BELOW TARGET"
+        review_text += word_count_note
+
+        print_panel(
+            review_text,
+            title=f"AI Review Pass {pass_num}/3 (Score: {score}/10)",
+            border_style="yellow",
+        )
+
+        console.print(f"\n[cyan]Word count: {word_count}[/cyan]")
+
+        if pass_num < 3:
+            if get_yolo_mode():
+                console.print(
+                    f"[yellow]YOLO: Auto-regenerating for pass {pass_num + 1}...[/yellow]"
+                )
+            else:
+                choice = ask_choice(
+                    f"Pass {pass_num} complete — Score: {score}/10",
+                    ["C", "R", "F", "E", "S"],
+                )
+
+                if choice == "R":
+                    console.print("[cyan]Regenerating with AI feedback...[/cyan]")
+                    # review_text already contains the feedback
+                    continue
+                elif choice == "F":
+                    extra_feedback = console.input(
+                        "Enter additional feedback: "
+                    ).strip()
+                    review_text = (
+                        f"## AI Review Feedback\n{review_text}\n\n"
+                        f"## Additional User Feedback\n{extra_feedback}"
+                    )
+                    continue
+                elif choice == "E":
+                    draft_path = (
+                        project.path / "chapters" / f"chapter_{chapter_num}_draft.md"
+                    )
+                    edit_in_editor(str(draft_path))
+                    console.print("[green]Edited. Continuing to next pass...[/green]")
+                    continue
+                elif choice == "S":
+                    print(f"Skipping chapter {chapter_num}...")
+                    run_chapter_loop(project, client, chapter_num + 1)
+                    return
+                # "C" continues to next pass
+
+    # After 3 passes, approve
+    if get_yolo_mode():
+        console.print("[yellow]YOLO: Auto-approving chapter after 3 passes...[/yellow]")
+    else:
+        console.print(
+            f"[green]Chapter {chapter_num} complete after 3 passes. "
+            f"Final score: {score}/10[/green]"
+        )
+
+    approve_chapter(project, client, chapter_num)
 
 
 def update_macro_summary(project: Project, client: APIClient, chapter_num: int):
@@ -642,6 +827,45 @@ def approve_chapter(project: Project, client: APIClient, chapter_num: int):
     if next_chapter <= project.total_chapters:
         if confirm(f"Proceed to Chapter {next_chapter}?"):
             run_chapter_loop(project, client, next_chapter)
+        else:
+            # User chose not to proceed - offer to regenerate current chapter
+            console.print(
+                f"[yellow]Chapter {chapter_num} is approved. Options:[/yellow]"
+            )
+            console.print("[R]egenerate this chapter anyway (with latest AI feedback)")
+            console.print("[E]xit to menu")
+            choice = console.input("Choose an option: ").strip().upper()
+
+            if choice == "R":
+                console.print(
+                    f"[cyan]Regenerating Chapter {chapter_num} with AI feedback...[/cyan]"
+                )
+                # Get the latest AI review
+                review_text, score = reviewer.generate_review(
+                    project, client, chapter_num
+                )
+                print_panel(
+                    review_text,
+                    title=f"AI Review (Score: {score}/10)",
+                    border_style="yellow",
+                )
+                # Delete the approved version and regenerate with feedback
+                final_path = project.path / "chapters" / f"chapter_{chapter_num}.md"
+                if final_path.exists():
+                    final_path.unlink()
+                # Remove from approved list
+                config = project.load_config()
+                approved = config.get("approved_chapters", [])
+                if chapter_num in approved:
+                    config["approved_chapters"] = [
+                        c for c in approved if c != chapter_num
+                    ]
+                    project.save_config(config)
+                # Regenerate with AI feedback
+                chapter_writer.regenerate_chapter(
+                    project, client, chapter_num, review_text
+                )
+                run_chapter_loop(project, client, chapter_num)
     else:
         print_success("All chapters complete!")
 

@@ -211,6 +211,8 @@ class BookRetriever:
             return chunks
 
         for md_file in sorted(chapters_dir.glob("chapter_*.md")):
+            if "_draft" in md_file.name:
+                continue
             try:
                 chapter_num = str(int(md_file.stem.split("_")[1]))
             except (ValueError, IndexError):
@@ -323,6 +325,16 @@ class BookRetriever:
                 if result.get("chapter", 0) >= chapter_num:
                     continue
 
+            if result.get("score", 0) < 0.05:
+                continue
+
+            recency_weight = 1.0
+            if result["source_type"] == "chapter":
+                chunk_chapter = result.get("chapter", 0)
+                if chunk_chapter > 0 and chapter_num > 1:
+                    recency_weight = 1.0 + 0.3 * (1.0 - chunk_chapter / chapter_num)
+            result["score"] = result.get("score", 0) * recency_weight
+
             filtered_results.append(result)
 
             if len(filtered_results) >= top_n:
@@ -336,14 +348,23 @@ def format_retrieved_context(chunks: List[dict]) -> str:
     if not chunks:
         return "No relevant context found."
 
+    truncation_limits = {
+        "character": 400,
+        "world": 500,
+        "chapter": 800,
+        "summary": 600,
+    }
+
     formatted = []
 
     for chunk in chunks:
         source = chunk["source"]
         text = chunk["text"]
+        source_type = chunk.get("source_type", "")
+        limit = truncation_limits.get(source_type, 500)
 
-        if len(text) > 500:
-            text = text[:500] + "..."
+        if len(text) > limit:
+            text = text[:limit] + "..."
 
         formatted.append(f"[{source}]\n{text}\n")
 

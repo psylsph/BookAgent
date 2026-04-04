@@ -11,49 +11,72 @@ _env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(_env_path)
 
 # API Configuration
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_TIMEOUT = int(os.getenv("ANTHROPIC_TIMEOUT", "120"))
+ANTHROPIC_AUTH_TOKEN = os.getenv("ANTHROPIC_AUTH_TOKEN", "")
+ANTHROPIC_API_KEY = ANTHROPIC_AUTH_TOKEN or os.getenv("ANTHROPIC_API_KEY", "")
+API_TIMEOUT_MS = int(os.getenv("API_TIMEOUT_MS", "120000"))
+ANTHROPIC_TIMEOUT = API_TIMEOUT_MS / 1000
 
 # Default writing settings
-DEFAULT_MIN_WORDS = int(os.getenv("DEFAULT_MIN_WORDS", "2000"))
+DEFAULT_MIN_WORDS = int(os.getenv("DEFAULT_MIN_WORDS", "1500"))
 
 # Temperature settings
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
 
 # Stage-specific temperature overrides (optional)
 TEMPERATURE_MAP = {
-    "story_bible": float(os.getenv("TEMP_STORY_BIBLE", "0.7")),
-    "world_builder": float(os.getenv("TEMP_WORLD_BUILDER", "0.7")),
-    "characters": float(os.getenv("TEMP_CHARACTERS", "0.7")),
-    "chapter_outliner": float(os.getenv("TEMP_CHAPTER_OUTLINER", "0.7")),
+    "story_bible": float(os.getenv("TEMP_STORY_BIBLE", "0.4")),
+    "world_builder": float(os.getenv("TEMP_WORLD_BUILDER", "0.5")),
+    "characters": float(os.getenv("TEMP_CHARACTERS", "0.5")),
+    "chapter_outliner": float(os.getenv("TEMP_CHAPTER_OUTLINER", "0.5")),
     "chapter_writer": float(os.getenv("TEMP_CHAPTER_WRITER", "0.8")),
+    "context_brief": float(os.getenv("TEMP_CONTEXT_BRIEF", "0.3")),
     "reviewer": float(os.getenv("TEMP_REVIEWER", "0.5")),
     "outline_reviewer": float(os.getenv("TEMP_OUTLINE_REVIEWER", "0.5")),
-    "macro_summary": float(os.getenv("TEMP_MACRO_SUMMARY", "0.5")),
+    "macro_summary": float(os.getenv("TEMP_MACRO_SUMMARY", "0.3")),
 }
 
-# Remote config (zenmux or other providers)
-ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "")
-ANTHROPIC_REMOTE_MODEL = os.getenv("ANTHROPIC_REMOTE_MODEL", "claude-sonnet-4-20250514")
-ANTHROPIC_REMOTE_CONTEXT = int(os.getenv("ANTHROPIC_REMOTE_CONTEXT", "128000"))
-
-# Local config
-LOCAL_BASE_URL = os.getenv("LOCAL_BASE_URL", "")
-ANTHROPIC_LOCAL_MODEL = os.getenv(
-    "ANTHROPIC_LOCAL_MODEL", "mistralai/mistral-nemo-instruct-2407"
+# Model configuration
+ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL") or None
+ANTHROPIC_DEFAULT_HAIKU_MODEL = os.getenv(
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL", "claude-haiku-4-20250514"
 )
-ANTHROPIC_LOCAL_CONTEXT = int(os.getenv("ANTHROPIC_LOCAL_CONTEXT", "32768"))
+ANTHROPIC_DEFAULT_SONNET_MODEL = os.getenv(
+    "ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-20250514"
+)
+ANTHROPIC_DEFAULT_OPUS_MODEL = os.getenv(
+    "ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-4-20250514"
+)
+ANTHROPIC_HAIKU_CONTEXT = int(os.getenv("ANTHROPIC_HAIKU_CONTEXT", "128000"))
+ANTHROPIC_SONNET_CONTEXT = int(os.getenv("ANTHROPIC_SONNET_CONTEXT", "128000"))
+ANTHROPIC_OPUS_CONTEXT = int(os.getenv("ANTHROPIC_OPUS_CONTEXT", "128000"))
 
 # Provider mappings for each pipeline stage
 MODEL_PROVIDER_MAP = {
-    "story_bible": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "world_builder": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "characters": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "chapter_outliner": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "chapter_writer": ("remote", ANTHROPIC_REMOTE_MODEL, ANTHROPIC_REMOTE_CONTEXT),
-    "reviewer": ("remote", ANTHROPIC_REMOTE_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "outline_reviewer": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
-    "macro_summary": ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT),
+    "story_bible": ("local", ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_HAIKU_CONTEXT),
+    "world_builder": ("local", ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_HAIKU_CONTEXT),
+    "characters": ("local", ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_HAIKU_CONTEXT),
+    "chapter_outliner": (
+        "local",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL,
+        ANTHROPIC_HAIKU_CONTEXT,
+    ),
+    "context_brief": (
+        "local",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL,
+        ANTHROPIC_HAIKU_CONTEXT,
+    ),
+    "chapter_writer": (
+        "remote",
+        ANTHROPIC_DEFAULT_SONNET_MODEL,
+        ANTHROPIC_SONNET_CONTEXT,
+    ),
+    "reviewer": ("remote", ANTHROPIC_DEFAULT_SONNET_MODEL, ANTHROPIC_SONNET_CONTEXT),
+    "outline_reviewer": (
+        "local",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL,
+        ANTHROPIC_HAIKU_CONTEXT,
+    ),
+    "macro_summary": ("local", ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_HAIKU_CONTEXT),
 }
 
 
@@ -71,15 +94,9 @@ class APIClient:
 
     def _get_client(self, provider: str) -> anthropic.Anthropic:
         if provider not in self._clients:
-            base_url = None
-            if provider == "remote":
-                base_url = ANTHROPIC_BASE_URL
-            elif provider == "local":
-                base_url = LOCAL_BASE_URL if LOCAL_BASE_URL else None
-
             self._clients[provider] = anthropic.Anthropic(
                 api_key=self.api_key,
-                base_url=base_url,
+                base_url=ANTHROPIC_BASE_URL if provider == "remote" else None,
                 timeout=self.timeout,
             )
         return self._clients[provider]
@@ -91,21 +108,21 @@ class APIClient:
         # Prefer stage-specific model from MODEL_PROVIDER_MAP over project config
         # (project config model is typically used for chapter writing)
         _, model, _ = MODEL_PROVIDER_MAP.get(
-            stage, ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT)
+            stage, ("local", ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_HAIKU_CONTEXT)
         )
         return model
 
     def get_context_for_stage(self, stage: str) -> int:
         """Get context window size for a given pipeline stage."""
         _, _, context = MODEL_PROVIDER_MAP.get(
-            stage, ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT)
+            stage, ("local", ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_HAIKU_CONTEXT)
         )
         return context
 
     def get_provider_for_stage(self, stage: str) -> str:
         """Get provider (local/remote) for a given pipeline stage."""
         provider, _, _ = MODEL_PROVIDER_MAP.get(
-            stage, ("local", ANTHROPIC_LOCAL_MODEL, ANTHROPIC_LOCAL_CONTEXT)
+            stage, ("local", ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_HAIKU_CONTEXT)
         )
         return provider
 

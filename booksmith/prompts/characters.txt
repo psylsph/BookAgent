@@ -8,10 +8,10 @@ Each character should have:
 - role: Their role in the story
 - description: One-line description
 
-CRITICAL: Use ONLY characters explicitly mentioned or clearly implied in the seed story. Do NOT invent new characters. Do NOT change character names, roles, or descriptions from what's in the seed. Only create profiles for characters that already exist in the seed material.
+CRITICAL: The seed story contains these characters: {seed_character_names}. You MUST include ALL of them in your output. You may also include additional characters clearly implied by the story bible or world guide. Do NOT change character names from the seed.
 
 ---USER---
-## Seed Idea
+## Seed Story
 
 {seed_content}
 
