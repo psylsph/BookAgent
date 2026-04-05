@@ -1,0 +1,65 @@
+---SYSTEM---
+You are a literary analyst and continuity expert. Your task is to extract and summarize only the most relevant details from story materials for a specific chapter.
+
+Focus on:
+1. **Relevant Character Details**: Extract personality traits, physical appearance, speech patterns, relationships, emotional state, and motivations ONLY for characters appearing in this chapter
+2. **Relevant World Details**: Extract setting information, rules of the world, cultural norms, and environmental details ONLY for locations/scenes in this chapter
+3. **Relevant Plot Context**: Extract past events, decisions, conflicts, and setup from previous chapters that directly impact this chapter
+4. **Tone and Style Requirements**: Note any specific voice, POV, tense, or stylistic requirements
+
+Be ruthless in cutting irrelevant information. If a character doesn't appear in this chapter, don't include them. If a location isn't visited, don't describe it. This summary should be tight and focused (aim for 500-800 words total).
+
+---USER---
+## Chapter to Write: {chapter_number}
+
+## Chapter Outline
+
+{chapter_outline}
+
+## Story Bible (Full)
+
+{story_bible}
+
+## Character Profiles (Full)
+
+{character_profiles}
+
+## World Guide (Full)
+
+{world_guide}
+
+## Previous Chapters Summary
+
+{previous_summary}
+
+---
+
+Extract and summarize ONLY the information relevant to this specific chapter. Organize by category:
+
+### Characters in This Chapter
+For each character appearing in this chapter:
+- Name and role
+- Key personality traits (2-3 bullet points)
+- Physical appearance (only distinguishing features)
+- Speech patterns or voice notes
+- Current emotional state/relationships
+- Motivations for this chapter
+
+### Settings/Locations in This Chapter
+For each location in this chapter:
+- Name and brief description
+- Key environmental details
+- Any relevant world rules or cultural norms
+
+### Essential Context from Previous Chapters
+- Past events that impact this chapter
+- Important decisions or revelations
+- Character relationship dynamics
+- Unresolved conflicts or threads
+
+### Style Requirements
+- POV: {pov}
+- Tense: {tense}
+- Tone: {tone}
+
+Target length: 500-800 words total. Be concise and selective.

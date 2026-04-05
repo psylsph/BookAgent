@@ -2,7 +2,7 @@ from typing import Generator, Optional
 
 from ..api_client import APIClient, format_prompt
 from ..storage.project import Project
-from ..ui import console
+from ..ui.console import console, print_header
 
 
 def generate_world(
@@ -11,7 +11,7 @@ def generate_world(
     extra_instruction: Optional[str] = None,
 ) -> str:
     """Generate world guide from story bible."""
-    console.print_header("Generating World Guide...")
+    print_header("Generating World Guide...")
 
     story_bible = project.read_file("story_bible.md")
 

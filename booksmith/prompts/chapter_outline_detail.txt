@@ -1,0 +1,123 @@
+---SYSTEM---
+You are a plot architect specializing in detailed chapter outlines. Create comprehensive scene-by-scene breakdowns for individual chapters.
+
+OUTPUT REQUIREMENTS:
+- Fill EVERY field with SPECIFIC details from the story context
+- Use REAL character names, REAL locations, ACTUAL plot points
+- Create exactly 3 substantial scenes per chapter
+- Each scene action should be 3-4 detailed sentences
+- Connect scenes logically to previous and next chapters
+
+---USER---
+## Seed Story
+
+{seed_content}
+
+## Story Bible (summary)
+
+{story_bible_summary}
+
+## World Details
+
+{world_details}
+
+## Characters
+
+{characters_text}
+
+## Chapter List (Full Story Arc)
+
+{chapter_list_text}
+
+---
+
+## GENERATE CHAPTER NUMBER {chapter_number}: {chapter_title}
+
+**This is Chapter {chapter_number} in the story sequence.** You are generating the outline for the {chapter_number}th chapter of this book.
+
+**Title (MUST USE EXACTLY):** {chapter_title}
+**Purpose (MUST FOLLOW):** {chapter_purpose}
+
+**Story Sequence Position:** This is chapter {chapter_number} out of {total_chapters} chapters.
+**Previous chapter:** {previous_chapter}
+**Next chapter:** {next_chapter}
+
+{feedback_text}
+
+---{feedback_instructions}
+
+## CRITICAL OUTPUT FORMAT REQUIREMENTS
+
+You MUST output the outline in EXACTLY this format with EVERY FIELD filled in with SPECIFIC details from the story context above.
+
+# CHAPTER {chapter_number}: {chapter_title_upper}
+
+## CHAPTER OVERVIEW
+
+**POV Character:** [Use a REAL character name from the Characters section above]
+**Setting:** [Use a REAL location from the World Details section above]
+**Characters Present:** [List 2-4 REAL character names involved in this chapter]
+
+**Chapter Goal:** [Describe what this chapter specifically accomplishes in the story - tie it to the Purpose: {chapter_purpose}]
+
+**Emotional Arc:** [Describe the emotional journey - e.g., "Tension builds as X discovers Y, leading to fear when Z happens"]
+
+**Target Word Count:** 2000-3000 words
+
+## SCENE BREAKDOWN
+
+IMPORTANT: Create exactly 3 substantial scenes for this chapter. Each scene should be detailed and meaningful.
+
+### Scene 1: [Specific scene title - e.g., "The Discovery" or "Confrontation at the Gate"]
+**Setting:** [REAL location from world]
+**POV:** [REAL character name]
+**Action:** [3-4 specific sentences describing what ACTUALLY happens - e.g., "Sarah confronts Marcus about the stolen documents. He denies involvement but his hand shakes. She notices a bloody cloth in his wastebasket and realizes he's injured. When she tries to leave, he blocks the door with a threatening glare."]
+
+### Scene 2: [Specific scene title]
+**Setting:** [REAL location from world]
+**POV:** [REAL character name]
+**Action:** [3-4 specific sentences describing what ACTUALLY happens - use real character names, real conflicts, specific actions]
+
+### Scene 3: [Specific scene title]
+**Setting:** [REAL location from world]
+**POV:** [REAL character name]
+**Action:** [3-4 specific sentences describing what ACTUALLY happens - use real character names, real conflicts, specific actions]
+
+EXACTLY 3 SCENES TOTAL - NO MORE, NO LESS
+
+## STORY CONNECTIONS
+
+**Connection to {previous_chapter}:** [Explain how this chapter flows from the previous one - what events lead to this chapter]
+
+**Connection to Chapter {next_chapter_num}:** [Explain how this chapter sets up the next one - what cliffhanger or resolution leads into chapter {next_chapter_num}]
+
+## FORESHADOWING & CALLBACKS
+
+- [Specific element from this chapter that pays off later - e.g., "The bloody cloth Marcus hides will be revealed as evidence in Chapter 5"]
+- [Callback to earlier element - e.g., "Sarah recalls her training from Chapter 2 to defend herself"]
+- [Another specific foreshadowing or callback element]
+
+---
+
+CRITICAL REQUIREMENTS:
+- EVERY field must be filled with SPECIFIC details based on the story context provided above
+- Use REAL character names from the Characters section (never use [Character])
+- Use REAL locations from the World Details section (never use [Location])
+- Describe SPECIFIC plot points that ACTUALLY happen in this chapter
+- Base the chapter content on the Purpose: {chapter_purpose}
+- Make sure scenes flow logically from the previous chapter and set up the next chapter
+- Each scene action should be 3-4 detailed sentences describing specific events, conflicts, and outcomes
+
+Do NOT write chapter prose. Only output the outline structure with detailed content in each field.
+
+EXAMPLE OF CORRECTLY FILLED FIELD:
+**Bad:** POV Character: [Specify]
+**Good:** POV Character: Commander Elena Vance
+
+**Bad:** Setting: [Location]
+**Good:** Setting: The bridge of the ISS Artemis, orbiting Mars' north pole
+
+**Bad:** Action: [Describe what happens]
+**Good:** Action: Elena discovers the unauthorized transmission originating from the cargo bay. When she investigates, she finds Tech Sergeant Chen modifying the communications array. He claims it's an upgrade but she notices he's sweating nervously and hiding a data chip behind his back.
+
+NOW generate the complete outline following this format and these examples.

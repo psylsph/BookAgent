@@ -5,7 +5,7 @@ from typing import Generator, Optional
 
 from ..api_client import APIClient, format_prompt
 from ..storage.project import Project
-from ..ui import console
+from ..ui.console import console, print_header
 
 
 def parse_character_list(text: str) -> list[dict]:
@@ -215,12 +215,9 @@ def extract_seed_character_names(seed_content: str) -> list[str]:
     return unique_names
 
 
-def generate_character_list(
-    project: Project,
-    client: APIClient,
-) -> list[dict]:
-    """Generate initial character list."""
-    console.print_header("Generating Character List...")
+def generate_character_list(project: Project, client: APIClient) -> list[dict]:
+    """Generate list of characters for the story."""
+    print_header("Generating Character List...")
 
     story_bible = project.read_file("story_bible.md")
     world = project.read_file("world.md")
@@ -257,8 +254,8 @@ def generate_character_profile(
     character_info: dict,
     all_characters: list[dict],
 ) -> str:
-    """Generate full profile for a single character."""
-    console.print_header(f"Generating profile for {character_info['name']}...")
+    """Generate detailed character profile."""
+    print_header(f"Generating profile for {character_info['name']}...")
 
     story_bible = project.read_file("story_bible.md")
     world = project.read_file("world.md")

@@ -189,10 +189,26 @@ def resume(
                     # All outlines approved
                     next_chapter = len(chapters) + 1
 
+                # Count only approved chapters that exist in the chapter list
+                approved_count = sum(
+                    1 for ch in chapters if ch["number"] in approved_outlines
+                )
+
+                if next_chapter <= len(chapters):
+                    # Show which chapters are approved for debugging
+                    sorted_approved = sorted(
+                        [c for c in approved_outlines if c <= len(chapters)]
+                    )
+                    console.print(
+                        f"[green]Resuming outline review from Chapter {next_chapter} "
+                        f"({approved_count}/{len(chapters)} approved)...[/green]"
+                    )
+                    console.print(f"[dim]Approved chapters: {sorted_approved}[/dim]")
+
                 if next_chapter <= len(chapters):
                     console.print(
                         f"[green]Resuming outline review from Chapter {next_chapter} "
-                        f"({len(approved_outlines)}/{len(chapters)} approved)...[/green]"
+                        f"({approved_count}/{len(chapters)} approved)...[/green]"
                     )
                     review_chapter_outlines(project, client, chapters, next_chapter)
                     return
@@ -458,6 +474,50 @@ Regenerate the character list incorporating this feedback.
         next_phase(project, client)
 
 
+def review_chapter_list_and_proceed(
+    project: Project, client: APIClient, chapters: list
+):
+    """Show chapter list and ask for feedback/regeneration."""
+    # Display the chapter list
+    console.print("\n[cyan]Chapter List:[/cyan]")
+    for ch in chapters:
+        console.print(f"  {ch['number']}. {ch['title']} - {ch.get('purpose', '')}")
+
+    choice = ask_choice(
+        "Chapter List",
+        ["A", "R", "F", "E"],
+    )
+
+    if choice == "A":
+        print_success("Chapter list approved.")
+        first_chapter = 1
+        review_chapter_outlines(project, client, chapters, first_chapter)
+    elif choice == "R":
+        chapters = chapter_outliner.generate_chapter_list(project, client)
+        if chapters and len(chapters) != project.total_chapters:
+            project.set_total_chapters(len(chapters))
+        review_chapter_list_and_proceed(project, client, chapters)
+    elif choice == "F":
+        feedback = console.input("What would you like to change? ").strip()
+        chapters = chapter_outliner.generate_chapter_list_with_feedback(
+            project, client, feedback
+        )
+        if chapters and len(chapters) != project.total_chapters:
+            project.set_total_chapters(len(chapters))
+        review_chapter_list_and_proceed(project, client, chapters)
+    elif choice == "E":
+        edit_in_editor(str(project.path / "chapter_outlines" / "chapter_list.md"))
+        # Reload after editing
+        chapter_list_path = project.path / "chapter_outlines" / "chapter_list.md"
+        try:
+            content = chapter_list_path.read_text()
+            chapters = chapter_outliner.parse_chapter_list(content)
+        except Exception:
+            console.print("[yellow]Could not reload chapter list after edit[/yellow]")
+        first_chapter = 1
+        review_chapter_outlines(project, client, chapters, first_chapter)
+
+
 def run_chapters_phase(
     project: Project, client: APIClient, force_regenerate: bool = False
 ):
@@ -483,9 +543,17 @@ def run_chapters_phase(
                     )
                     return
         except Exception as e:
-            print(f"Error loading existing chapter list: {e}")
+            console.print(f"[yellow]Error loading existing chapter list: {e}[/yellow]")
+            console.print("[yellow]Will generate a new chapter list.[/yellow]")
 
-    chapters = chapter_outliner.generate_chapter_list(project, client)
+    try:
+        chapters = chapter_outliner.generate_chapter_list(project, client)
+    except Exception as e:
+        console.print(f"[red]Error generating chapter list: {e}[/red]")
+        console.print(
+            "[yellow]This may be due to context overflow. Try using a smaller model or reducing context size.[/yellow]"
+        )
+        return
 
     if not chapters:
         print_error(
@@ -493,16 +561,16 @@ def run_chapters_phase(
         )
         return
 
-    # Warn if chapter count doesn't match story bible
+    # Warn if chapter count doesn't match expected
     expected = project.total_chapters
     if len(chapters) != expected:
-        print_error(
-            f"Warning: Story bible specifies {expected} chapters but got {len(chapters)}. "
-            f"Please regenerate with feedback to adjust."
+        console.print(
+            f"[yellow]Note: Generated {len(chapters)} chapters (expected {expected}). "
+            f"Updating project config to match actual count.[/yellow]"
         )
+        project.set_total_chapters(len(chapters))
 
-    first_chapter = 1
-    review_chapter_outlines(project, client, chapters, first_chapter)
+    review_chapter_list_and_proceed(project, client, chapters)
 
 
 def review_chapter_outlines(
@@ -529,6 +597,13 @@ def review_chapter_outlines(
     console.print(
         f"[dim]Checking outline for chapter {chapter['number']}: {outline_path.exists()}[/dim]"
     )
+
+    # Check if outline exists but wasn't approved (was likely regenerated)
+    if outline_path.exists() and chapter["number"] not in project.approved_outlines:
+        console.print(
+            f"[yellow]Note: Chapter {chapter['number']} outline exists but is not approved. "
+            f"It may have been regenerated and needs re-approval.[/yellow]"
+        )
 
     # Generate outline if it doesn't exist
     if not outline_path.exists():
@@ -595,7 +670,8 @@ def review_chapter_outlines(
 
             if review_choice == "R":
                 # Regenerate outline with AI feedback
-                chapter_outliner.regenerate_chapter_outline(
+                console.print(f"[cyan]Regenerating outline with AI feedback...[/cyan]")
+                new_outline = chapter_outliner.regenerate_chapter_outline(
                     project,
                     client,
                     chapter["number"],
@@ -603,6 +679,9 @@ def review_chapter_outlines(
                 )
                 # Mark as not approved since we're regenerating
                 project.update_outline_status(chapter["number"], approved=False)
+                console.print(
+                    f"[green]✓ Outline regenerated. Re-displaying for review...[/green]"
+                )
                 review_chapter_outlines(project, client, chapters, chapter_num)
             else:
                 # Continue without changes - mark as approved
@@ -677,9 +756,10 @@ def run_chapter_loop(project: Project, client: APIClient, chapter_num: int):
     # Three-pass generation: generate → review → regenerate → review → regenerate → approve
     review_text = None
     score = None
+    previous_score = None
 
-    for pass_num in range(1, 4):
-        print_header(f"Chapter {chapter_num} — Pass {pass_num}/3")
+    for pass_num in range(1, 6):
+        print_header(f"Chapter {chapter_num} — Pass {pass_num}/5")
 
         if pass_num == 1:
             chapter_content = chapter_writer.generate_chapter(
@@ -705,13 +785,23 @@ def run_chapter_loop(project: Project, client: APIClient, chapter_num: int):
 
         print_panel(
             review_text,
-            title=f"AI Review Pass {pass_num}/3 (Score: {score}/10)",
+            title=f"AI Review Pass {pass_num}/5 (Score: {score}/10)",
             border_style="yellow",
         )
 
         console.print(f"\n[cyan]Word count: {word_count}[/cyan]")
 
-        if pass_num < 3:
+        # Detect repetition loop: if score hasn't improved after 3 passes, stop regenerating
+        if previous_score is not None and pass_num >= 3:
+            if abs(score - previous_score) < 0.5:  # Score hasn't changed significantly
+                console.print(
+                    f"[yellow]Score stabilized at {score}/10. Stopping regeneration early.[/yellow]"
+                )
+                break
+        if pass_num >= 3:
+            previous_score = score
+
+        if pass_num < 5:
             if get_yolo_mode():
                 console.print(
                     f"[yellow]YOLO: Auto-regenerating for pass {pass_num + 1}...[/yellow]"
@@ -748,12 +838,12 @@ def run_chapter_loop(project: Project, client: APIClient, chapter_num: int):
                     return
                 # "C" continues to next pass
 
-    # After 3 passes, approve
+    # After 5 passes, approve
     if get_yolo_mode():
-        console.print("[yellow]YOLO: Auto-approving chapter after 3 passes...[/yellow]")
+        console.print("[yellow]YOLO: Auto-approving chapter after 5 passes...[/yellow]")
     else:
         console.print(
-            f"[green]Chapter {chapter_num} complete after 3 passes. "
+            f"[green]Chapter {chapter_num} complete after 5 passes. "
             f"Final score: {score}/10[/green]"
         )
 
@@ -950,6 +1040,83 @@ def export(
 
     print_success(f"Manuscript exported to: {output_path}")
     console.print(f"[cyan]Total word count: {total_words}[/cyan]")
+
+
+@app.command()
+def normalize_outlines(
+    name: str = typer.Argument(..., help="Project name"),
+):
+    """Normalize all chapter outlines to consistent format."""
+    try:
+        project = find_project(name, get_projects_dir())
+    except FileNotFoundError:
+        print_error(f"Project not found: {name}")
+        return
+
+    outlines_dir = project.path / "chapter_outlines"
+    if not outlines_dir.exists():
+        print_error("No chapter_outlines directory found.")
+        return
+
+    # Load chapter list for titles
+    chapter_list_path = outlines_dir / "chapter_list.md"
+    chapters = []
+    if chapter_list_path.exists():
+        try:
+            content = chapter_list_path.read_text()
+            chapters = chapter_outliner.parse_chapter_list(content)
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Could not parse chapter list: {e}[/yellow]"
+            )
+
+    # Find all chapter outline files
+    outline_files = sorted(
+        outlines_dir.glob("chapter_[0-9]*.md"),
+        key=lambda f: (
+            int(f.stem.split("_")[1]) if f.stem.split("_")[1].isdigit() else 0
+        ),
+    )
+
+    if not outline_files:
+        print_error("No chapter outline files found.")
+        return
+
+    print_header(f"Normalizing {len(outline_files)} chapter outlines...")
+
+    normalized_count = 0
+    for outline_file in outline_files:
+        try:
+            # Extract chapter number
+            num_str = outline_file.stem.split("_")[1]
+            if not num_str.isdigit():
+                continue
+            chapter_num = int(num_str)
+
+            # Find title from chapter list
+            title = f"Chapter {chapter_num}"
+            for ch in chapters:
+                if ch["number"] == chapter_num:
+                    title = ch["title"]
+                    break
+
+            # Read and normalize
+            content = outline_file.read_text()
+            normalized = chapter_outliner.normalize_outline_format(
+                content, chapter_num, title
+            )
+
+            # Write back
+            outline_file.write_text(normalized)
+            normalized_count += 1
+
+            console.print(f"[green]✓[/green] Normalized chapter {chapter_num}: {title}")
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Could not normalize {outline_file.name}: {e}[/yellow]"
+            )
+
+    print_success(f"Normalized {normalized_count} chapter outlines")
 
 
 if __name__ == "__main__":

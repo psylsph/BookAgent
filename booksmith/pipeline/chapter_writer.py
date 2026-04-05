@@ -21,7 +21,8 @@ CHAPTER_WRITER_SYSTEM_PROMPT = (
     "No filler scenes, padding, or unnecessary characters. "
     "Develop character voice and interiority through action and dialogue. "
     "Create tension and momentum. End chapters with hooks that pull readers forward. "
-    "Never repeat content from previous chapters. Show don't tell."
+    "Never repeat content from previous chapters. Show don't tell. "
+    "CRITICAL: Stay within the target word count range. Do not write excessively long chapters."
 )
 
 CHAPTER_WRITER_SYSTEM_REWRITE = (
@@ -97,6 +98,9 @@ def build_chapter_context(
     config = project.config
 
     story_bible = project.read_file("story_bible.md")
+    # Truncate story bible if too long
+    if len(story_bible) > 3000:
+        story_bible = story_bible[:3000] + "\n\n[... story bible truncated ...]"
 
     retriever = BookRetriever(project.path)
     top_n = 4 if chapter_num == 1 else 8
@@ -155,38 +159,66 @@ def generate_context_brief(
     chapter_num: int,
     chapter_outline: str,
 ) -> str:
-    """Use Haiku to condense all context into a tight brief for Sonnet.
+    """Use Haiku to extract relevant context into a tight brief for Sonnet.
 
-    Sends the full story bible and lets Haiku extract what's relevant
-    to this specific chapter, avoiding information loss from naive truncation.
+    Sends the full story bible, world guide, and character profiles to Haiku,
+    which extracts only what's relevant to this specific chapter.
+    This avoids information loss from naive truncation while keeping context minimal.
     """
-    context = build_chapter_context(project, chapter_num, chapter_outline)
+    config = project.config
 
-    system_prompt = (
-        "You are a writing assistant. Condense the provided context into a "
-        "tight, actionable brief for a professional fiction author. "
-        "Include only essential information: key world/setting details, "
-        "active character traits/relationships, relevant prior events, "
-        "and any continuity notes. Be concise — bullet points only. "
-        "Omit anything already covered by the chapter outline. "
-        f"Focus on what is relevant to Chapter {chapter_num}."
+    # Load all context sources
+    story_bible = project.read_file("story_bible.md")
+    world_guide = project.read_file("world.md")
+
+    # Get macro summary for previous chapters context
+    try:
+        previous_summary = project.get_macro_summary()
+    except FileNotFoundError:
+        previous_summary = "No previous chapters written yet."
+
+    # Get character profiles
+    characters = project.get_characters()
+    available_names = [char["name"] for char in characters if "name" in char]
+    relevant_names = extract_character_names_from_outline(
+        chapter_outline, available_names
     )
 
-    user_message = (
-        f"## Story Bible\n\n{context['story_bible']}\n\n"
-        f"## Character Profiles\n\n{context['character_profiles']}\n\n"
-        f"## Retrieved Context\n\n{context['retrieved_context']}\n\n"
-        f"## Chapter Outline\n\n{context['chapter_outline']}\n\n"
-        f"Condense the above into a brief for writing Chapter {chapter_num}. "
-        f"Extract only the story bible details relevant to this chapter. "
-        f"Focus on what the author needs beyond the outline."
+    character_profiles = []
+    for char in characters:
+        if "name" not in char:
+            continue
+        name = char["name"]
+        if name not in relevant_names:
+            continue
+        char_file = f"characters/{name.replace(' ', '_')}.md"
+        try:
+            profile = project.read_file(char_file)
+            character_profiles.append(f"## {name}\n{profile}")
+        except FileNotFoundError:
+            continue
+
+    character_text = "\n\n".join(character_profiles) or "No character profiles found."
+
+    # Load and format the prompt template
+    system_prompt, user_prompt = format_prompt(
+        "chapter_context",
+        chapter_number=chapter_num,
+        chapter_outline=chapter_outline,
+        story_bible=story_bible,
+        character_profiles=character_text,
+        world_guide=world_guide,
+        previous_summary=previous_summary,
+        pov=config.get("pov", "third person limited"),
+        tense=config.get("tense", "past"),
+        tone=config.get("tone", "literary"),
     )
 
     brief = ""
     for chunk in client.stream(
         stage="context_brief",
         system=system_prompt,
-        user_message=user_message,
+        user_message=user_prompt,
         project_config=project.config,
     ):
         brief += chunk
@@ -210,10 +242,16 @@ def generate_chapter(
     config = project.config
 
     # Use Haiku to condense all context into a brief for Sonnet
-    console.print("[cyan]Summarizing context with Haiku...[/cyan]")
+    console.print("[cyan]Summarizing context...[/cyan]")
     context_brief = generate_context_brief(
         project, client, chapter_num, chapter_outline
     )
+
+    # Save context brief for inspection
+    brief_path = f"chapters/chapter_{chapter_num}_context_brief.md"
+    project.write_file(brief_path, context_brief)
+    brief_word_count = len(context_brief.split())
+    console.print(f"[dim]Context brief: {brief_word_count} words[/dim]")
 
     # If there's feedback (from AI review), rewrite with the feedback instead
     if extra_feedback:
@@ -288,6 +326,15 @@ Target: {config.get("min_words_per_chapter", 1500)} words. Write substantial, de
 
     word_count = count_words(chapter_content)
     console.print(f"[cyan]Word count: {word_count}[/cyan]")
+
+    # Warn if chapter is excessively long (>5000 words)
+    max_words = 5000
+    if word_count > max_words:
+        console.print(
+            f"[yellow]WARNING: Chapter is {word_count} words, which exceeds the recommended maximum of {max_words} words. "
+            f"This may cause context overflow in subsequent review passes. "
+            f"Consider editing the chapter to reduce length.[/yellow]"
+        )
 
     draft_path = f"chapters/chapter_{chapter_num}_draft.md"
     project.write_file(draft_path, chapter_content)

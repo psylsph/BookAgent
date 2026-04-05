@@ -23,17 +23,24 @@ DEFAULT_MIN_WORDS = int(os.getenv("DEFAULT_MIN_WORDS", "1500"))
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
 
 # Stage-specific temperature overrides (optional)
-TEMPERATURE_MAP = {
-    "story_bible": float(os.getenv("TEMP_STORY_BIBLE", "0.4")),
-    "world_builder": float(os.getenv("TEMP_WORLD_BUILDER", "0.5")),
-    "characters": float(os.getenv("TEMP_CHARACTERS", "0.5")),
-    "chapter_outliner": float(os.getenv("TEMP_CHAPTER_OUTLINER", "0.5")),
-    "chapter_writer": float(os.getenv("TEMP_CHAPTER_WRITER", "0.8")),
-    "context_brief": float(os.getenv("TEMP_CONTEXT_BRIEF", "0.3")),
-    "reviewer": float(os.getenv("TEMP_REVIEWER", "0.5")),
-    "outline_reviewer": float(os.getenv("TEMP_OUTLINE_REVIEWER", "0.5")),
-    "macro_summary": float(os.getenv("TEMP_MACRO_SUMMARY", "0.3")),
-}
+# These will only be used if the specific TEMP_* env var is set
+# Otherwise DEFAULT_TEMPERATURE is used for all stages
+TEMPERATURE_MAP = {}
+
+# Check if stage-specific env vars are set, otherwise use None (will default to DEFAULT_TEMPERATURE)
+for stage, env_var in [
+    ("story_bible", "TEMP_STORY_BIBLE"),
+    ("world_builder", "TEMP_WORLD_BUILDER"),
+    ("characters", "TEMP_CHARACTERS"),
+    ("chapter_outliner", "TEMP_CHAPTER_OUTLINER"),
+    ("chapter_writer", "TEMP_CHAPTER_WRITER"),
+    ("context_brief", "TEMP_CONTEXT_BRIEF"),
+    ("reviewer", "TEMP_REVIEWER"),
+    ("outline_reviewer", "TEMP_OUTLINE_REVIEWER"),
+    ("macro_summary", "TEMP_MACRO_SUMMARY"),
+]:
+    if os.getenv(env_var):
+        TEMPERATURE_MAP[stage] = float(os.getenv(env_var))
 
 # Model configuration
 ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL") or None
@@ -144,13 +151,20 @@ class APIClient:
         temperature = self.get_temperature_for_stage(stage)
         client = self._get_client(provider)
 
+        # Cap max_tokens for chapter writing to prevent excessive length
+        # Assuming ~1.3 tokens per word, 5000 words ≈ 6500 tokens
+        if stage == "chapter_writer":
+            max_tokens = min(context_size, 8192)  # Cap at 8k tokens for chapter writing
+        else:
+            max_tokens = context_size
+
         for attempt in range(self.max_retries):
             try:
                 with client.messages.stream(
                     model=model,
                     system=system,
                     messages=[{"role": "user", "content": user_message}],
-                    max_tokens=context_size,
+                    max_tokens=max_tokens,
                     temperature=temperature,
                 ) as stream:
                     for text in stream.text_stream:
@@ -168,7 +182,7 @@ class APIClient:
                         model=model,
                         system=system,
                         messages=[{"role": "user", "content": user_message}],
-                        max_tokens=8192,
+                        max_tokens=min(max_tokens, 8192),
                     )
                     for block in cast(Any, response.content):
                         if hasattr(block, "text"):
